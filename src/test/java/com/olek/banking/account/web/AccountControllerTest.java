@@ -1,8 +1,6 @@
 package com.olek.banking.account.web;
 
-import com.olek.banking.account.application.GetAccountService;
-import com.olek.banking.account.application.OpenAccountCommand;
-import com.olek.banking.account.application.OpenAccountService;
+import com.olek.banking.account.application.*;
 import com.olek.banking.account.domain.Account;
 import com.olek.banking.account.domain.AccountId;
 import com.olek.banking.account.domain.AccountStatus;
@@ -21,6 +19,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -53,6 +52,9 @@ class AccountControllerTest {
 
     @MockitoBean
     private GetAccountService getAccountService;
+
+    @MockitoBean
+    private DepositFundsService depositFundsService;
 
     @Test
     void shouldOpenAccount() throws Exception {
@@ -335,6 +337,165 @@ class AccountControllerTest {
                 .andExpect(
                         jsonPath("$.context.value")
                                 .value("not-a-uuid")
+                );
+    }
+
+    @Test
+    void shouldDepositFunds() throws Exception {
+        AccountId accountId = AccountId.from(
+                "b8f62817-7a18-4c39-b750-8d608a245f52"
+        );
+
+        Account account = new Account(
+                accountId,
+                "001-1234567890",
+                CurrencyCode.PEN,
+                new Money(
+                        new BigDecimal("250.00"),
+                        CurrencyCode.PEN
+                ),
+                AccountStatus.ACTIVE,
+                NOW
+        );
+
+        when(
+                depositFundsService.deposit(
+                        any(DepositFundsCommand.class)
+                )
+        ).thenReturn(account);
+
+        DepositFundsRequest request =
+                new DepositFundsRequest(
+                        new BigDecimal("250.00"),
+                        CurrencyCode.PEN
+                );
+
+        mockMvc.perform(
+                        post(
+                                "/api/v1/accounts/{accountId}/deposits",
+                                accountId
+                        )
+                                .contentType("application/json")
+                                .content(
+                                        objectMapper.writeValueAsString(
+                                                request
+                                        )
+                                )
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.accountId")
+                                .value(accountId.toString())
+                )
+                .andExpect(
+                        jsonPath("$.balance")
+                                .value(250.00)
+                )
+                .andExpect(
+                        jsonPath("$.currency")
+                                .value("PEN")
+                );
+    }
+
+    @Test
+    void shouldRejectZeroDeposit() throws Exception {
+        DepositFundsRequest request =
+                new DepositFundsRequest(
+                        BigDecimal.ZERO,
+                        CurrencyCode.PEN
+                );
+
+        mockMvc.perform(
+                        post(
+                                "/api/v1/accounts/{accountId}/deposits",
+                                "b8f62817-7a18-4c39-b750-8d608a245f52"
+                        )
+                                .contentType("application/json")
+                                .content(
+                                        objectMapper.writeValueAsString(
+                                                request
+                                        )
+                                )
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.code")
+                                .value("VALIDATION_ERROR")
+                )
+                .andExpect(
+                        jsonPath("$.context.amount")
+                                .value(
+                                        "amount must be greater than zero"
+                                )
+                );
+    }
+
+    @Test
+    void shouldRejectDepositWithTooManyDecimalPlaces()
+            throws Exception {
+
+        DepositFundsRequest request =
+                new DepositFundsRequest(
+                        new BigDecimal("10.123"),
+                        CurrencyCode.PEN
+                );
+
+        mockMvc.perform(
+                        post(
+                                "/api/v1/accounts/{accountId}/deposits",
+                                "b8f62817-7a18-4c39-b750-8d608a245f52"
+                        )
+                                .contentType("application/json")
+                                .content(
+                                        objectMapper.writeValueAsString(
+                                                request
+                                        )
+                                )
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.code")
+                                .value("VALIDATION_ERROR")
+                )
+                .andExpect(
+                        jsonPath("$.context.amount")
+                                .value(
+                                        "amount must contain at most two "
+                                                + "decimal places"
+                                )
+                );
+    }
+
+    @Test
+    void shouldRejectInvalidAccountIdForDeposit()
+            throws Exception {
+
+        DepositFundsRequest request =
+                new DepositFundsRequest(
+                        new BigDecimal("100.00"),
+                        CurrencyCode.PEN
+                );
+
+        mockMvc.perform(
+                        post(
+                                "/api/v1/accounts/{accountId}/deposits",
+                                "not-a-uuid"
+                        )
+                                .contentType("application/json")
+                                .content(
+                                        objectMapper.writeValueAsString(
+                                                request
+                                        )
+                                )
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.code")
+                                .value("INVALID_PARAMETER")
+                )
+                .andExpect(
+                        jsonPath("$.context.parameter")
+                                .value("accountId")
                 );
     }
 
