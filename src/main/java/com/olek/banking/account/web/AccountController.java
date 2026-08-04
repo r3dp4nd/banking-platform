@@ -1,5 +1,6 @@
 package com.olek.banking.account.web;
 
+import com.olek.banking.account.application.DepositFundsService;
 import com.olek.banking.account.application.GetAccountService;
 import com.olek.banking.account.application.OpenAccountService;
 import com.olek.banking.account.domain.Account;
@@ -18,6 +19,7 @@ public class AccountController {
 
     private final OpenAccountService openAccountService;
     private final GetAccountService getAccountService;
+    private final DepositFundsService depositFundsService;
 
     /**
      * Creates the account controller.
@@ -26,7 +28,8 @@ public class AccountController {
      */
     public AccountController(
             OpenAccountService openAccountService,
-            GetAccountService getAccountService
+            GetAccountService getAccountService,
+            DepositFundsService depositFundsService
     ) {
         this.openAccountService = Objects.requireNonNull(
                 openAccountService,
@@ -36,6 +39,11 @@ public class AccountController {
         this.getAccountService = Objects.requireNonNull(
                 getAccountService,
                 "getAccountService must not be null"
+        );
+
+        this.depositFundsService = Objects.requireNonNull(
+                depositFundsService,
+                "depositFundsService must not be null"
         );
     }
 
@@ -69,6 +77,28 @@ public class AccountController {
     ) {
         Account account = getAccountService.getById(
                 AccountWebMapper.toAccountId(accountId)
+        );
+
+        return AccountWebMapper.toResponse(account);
+    }
+
+    /**
+     * Deposits test funds into an existing bank account.
+     *
+     * @param accountId textual account identifier
+     * @param request   validated deposit request
+     * @return updated bank account
+     */
+    @PostMapping("/{accountId}/deposits")
+    public AccountResponse depositFunds(
+            @PathVariable String accountId,
+            @Valid @RequestBody DepositFundsRequest request
+    ) {
+        Account account = depositFundsService.deposit(
+                AccountWebMapper.toDepositCommand(
+                        accountId,
+                        request
+                )
         );
 
         return AccountWebMapper.toResponse(account);

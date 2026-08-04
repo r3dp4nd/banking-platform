@@ -1,8 +1,10 @@
 package com.olek.banking.account.web;
 
+import com.olek.banking.account.application.DepositFundsCommand;
 import com.olek.banking.account.application.OpenAccountCommand;
 import com.olek.banking.account.domain.Account;
 import com.olek.banking.account.domain.AccountId;
+import com.olek.banking.shared.domain.Money;
 import com.olek.banking.shared.web.error.InvalidRequestParameterException;
 
 /**
@@ -61,5 +63,27 @@ final class AccountWebMapper {
                     value
             );
         }
+    }
+
+    /**
+     * Maps a deposit HTTP request to an application command.
+     *
+     * @param accountId textual account identifier
+     * @param request   deposit request
+     * @return deposit funds command
+     * @throws InvalidRequestParameterException if the account identifier is
+     *                                          invalid
+     */
+    static DepositFundsCommand toDepositCommand(
+            String accountId,
+            DepositFundsRequest request
+    ) {
+        return new DepositFundsCommand(
+                toAccountId(accountId),
+                new Money(
+                        request.amount(),
+                        request.currency()
+                )
+        );
     }
 }

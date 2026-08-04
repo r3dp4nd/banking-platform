@@ -1,5 +1,6 @@
 package com.olek.banking.account.configuration;
 
+import com.olek.banking.account.application.DepositFundsService;
 import com.olek.banking.account.application.GetAccountService;
 import com.olek.banking.account.application.OpenAccountService;
 import com.olek.banking.account.domain.AccountRepository;
@@ -64,5 +65,18 @@ public class AccountConfiguration {
             AccountRepository accountRepository
     ) {
         return new GetAccountService(accountRepository);
+    }
+
+    /**
+     * Creates the deposit funds use case.
+     *
+     * @param accountRepository account persistence port
+     * @return configured deposit funds service
+     */
+    @Bean
+    DepositFundsService depositFundsService(
+            AccountRepository accountRepository
+    ) {
+        return new DepositFundsService(accountRepository);
     }
 }
