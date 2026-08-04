@@ -10,6 +10,7 @@ import com.olek.banking.account.domain.exception.CurrencyMismatchException;
 import com.olek.banking.account.domain.exception.InsufficientBalanceException;
 import com.olek.banking.movement.domain.AccountMovement;
 import com.olek.banking.movement.domain.AccountMovementRepository;
+import com.olek.banking.shared.application.transaction.TransactionExecutor;
 import com.olek.banking.shared.domain.DomainException;
 import com.olek.banking.shared.domain.Money;
 import com.olek.banking.transfer.domain.Transfer;
@@ -29,19 +30,23 @@ public final class CreateTransferService {
     private final AccountRepository accountRepository;
     private final TransferRepository transferRepository;
     private final AccountMovementRepository movementRepository;
+    private final TransactionExecutor transactionExecutor;
     private final Clock clock;
 
     /**
      * Creates the transfer processing service.
      *
-     * @param accountRepository  account persistence port
-     * @param transferRepository transfer persistence port
-     * @param clock              source of the current time
+     * @param accountRepository   account persistence port
+     * @param transferRepository  transfer persistence port
+     * @param movementRepository  movement persistence port
+     * @param transactionExecutor transaction boundary
+     * @param clock               source of the current time
      */
     public CreateTransferService(
             AccountRepository accountRepository,
             TransferRepository transferRepository,
             AccountMovementRepository movementRepository,
+            TransactionExecutor transactionExecutor,
             Clock clock
     ) {
         this.accountRepository = Objects.requireNonNull(
@@ -59,6 +64,11 @@ public final class CreateTransferService {
                 "movementRepository must not be null"
         );
 
+        this.transactionExecutor = Objects.requireNonNull(
+                transactionExecutor,
+                "transactionExecutor must not be null"
+        );
+
         this.clock = Objects.requireNonNull(
                 clock,
                 "clock must not be null"
@@ -66,18 +76,10 @@ public final class CreateTransferService {
     }
 
     /**
-     * Creates and processes an internal transfer.
-     *
-     * <p>When the idempotency key already belongs to an equivalent request,
-     * the original transfer is returned without modifying account balances
-     * again.</p>
+     * Creates and processes an internal transfer atomically.
      *
      * @param command transfer information
      * @return created or previously processed transfer
-     * @throws NullPointerException            if the command is {@code null}
-     * @throws IdempotencyKeyConflictException if the key was used with
-     *                                         different transfer data
-     * @throws DomainException                 if a business rule prevents processing
      */
     public Transfer create(CreateTransferCommand command) {
         Objects.requireNonNull(
@@ -85,14 +87,33 @@ public final class CreateTransferService {
                 "command must not be null"
         );
 
+        TransferExecutionResult result =
+                transactionExecutor.execute(
+                        () -> executeTransfer(command)
+                );
+
+        if (result.wasRejected()) {
+            throw result.rejection();
+        }
+
+        return result.transfer();
+    }
+
+    private TransferExecutionResult executeTransfer(
+            CreateTransferCommand command
+    ) {
         Transfer existingTransfer = transferRepository
-                .findByIdempotencyKey(command.idempotencyKey())
+                .findByIdempotencyKey(
+                        command.idempotencyKey()
+                )
                 .orElse(null);
 
         if (existingTransfer != null) {
-            return handleExistingTransfer(
-                    existingTransfer,
-                    command
+            return TransferExecutionResult.completed(
+                    handleExistingTransfer(
+                            existingTransfer,
+                            command
+                    )
             );
         }
 
@@ -111,61 +132,82 @@ public final class CreateTransferService {
         transferRepository.save(transfer);
 
         try {
-            Account sourceAccount = findAccount(
-                    command.sourceAccountId()
-            );
-
-            Account destinationAccount = findAccount(
-                    command.destinationAccountId()
-            );
-
-            validateTransfer(
-                    sourceAccount,
-                    destinationAccount,
+            return processTransfer(
+                    transfer,
                     command
             );
-
-            sourceAccount.debit(command.amount());
-            destinationAccount.credit(command.amount());
-
-            accountRepository.save(sourceAccount);
-            accountRepository.save(destinationAccount);
-
-            Instant processedAt = Instant.now(clock);
-
-            AccountMovement debitMovement =
-                    AccountMovement.debit(
-                            sourceAccount.id(),
-                            transfer.id(),
-                            command.amount(),
-                            sourceAccount.balance(),
-                            processedAt
-                    );
-
-            AccountMovement creditMovement =
-                    AccountMovement.credit(
-                            destinationAccount.id(),
-                            transfer.id(),
-                            command.amount(),
-                            destinationAccount.balance(),
-                            processedAt
-                    );
-
-            movementRepository.save(debitMovement);
-            movementRepository.save(creditMovement);
-
-            transfer.complete(processedAt);
-
-            return transferRepository.save(transfer);
         } catch (DomainException exception) {
             transfer.reject(
                     exception.code().name(),
                     Instant.now(clock)
             );
 
-            transferRepository.save(transfer);
-            throw exception;
+            Transfer rejectedTransfer =
+                    transferRepository.save(transfer);
+
+            return TransferExecutionResult.rejected(
+                    rejectedTransfer,
+                    exception
+            );
         }
+    }
+
+    private TransferExecutionResult processTransfer(
+            Transfer transfer,
+            CreateTransferCommand command
+    ) {
+        Account sourceAccount = findAccount(
+                command.sourceAccountId()
+        );
+
+        Account destinationAccount = findAccount(
+                command.destinationAccountId()
+        );
+
+        validateTransfer(
+                sourceAccount,
+                destinationAccount,
+                command
+        );
+
+        sourceAccount.debit(command.amount());
+        destinationAccount.credit(command.amount());
+
+        Account savedSource =
+                accountRepository.save(sourceAccount);
+
+        Account savedDestination =
+                accountRepository.save(destinationAccount);
+
+        Instant processedAt = Instant.now(clock);
+
+        AccountMovement debitMovement = AccountMovement.debit(
+                savedSource.id(),
+                transfer.id(),
+                command.amount(),
+                savedSource.balance(),
+                processedAt
+        );
+
+        AccountMovement creditMovement = AccountMovement.credit(
+                savedDestination.id(),
+                transfer.id(),
+                command.amount(),
+                savedDestination.balance(),
+                processedAt
+        );
+
+        movementRepository.save(debitMovement);
+        movementRepository.save(creditMovement);
+
+        transfer.complete(processedAt);
+
+        Transfer completedTransfer =
+                transferRepository.save(transfer);
+
+        return TransferExecutionResult.completed(
+                completedTransfer
+        );
     }
 
     private Transfer handleExistingTransfer(
@@ -249,6 +291,35 @@ public final class CreateTransferService {
                     account.currency(),
                     amount.currency()
             );
+        }
+    }
+
+    private record TransferExecutionResult(
+            Transfer transfer,
+            DomainException rejection
+    ) {
+
+        private static TransferExecutionResult completed(
+                Transfer transfer
+        ) {
+            return new TransferExecutionResult(
+                    transfer,
+                    null
+            );
+        }
+
+        private static TransferExecutionResult rejected(
+                Transfer transfer,
+                DomainException rejection
+        ) {
+            return new TransferExecutionResult(
+                    transfer,
+                    rejection
+            );
+        }
+
+        private boolean wasRejected() {
+            return rejection != null;
         }
     }
 }

@@ -15,11 +15,11 @@ import com.olek.banking.movement.infrastructure.persistence.InMemoryAccountMovem
 import com.olek.banking.shared.domain.CurrencyCode;
 import com.olek.banking.shared.domain.Money;
 import com.olek.banking.shared.infrastructure.MutableClock;
+import com.olek.banking.shared.infrastructure.transaction.DirectTransactionExecutor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -47,11 +47,10 @@ class DepositFundsServiceTest {
         movementRepository =
                 new InMemoryAccountMovementRepository();
 
-
-
         service = new DepositFundsService(
                 accountRepository,
                 movementRepository,
+                new DirectTransactionExecutor(),
                 clock
         );
     }

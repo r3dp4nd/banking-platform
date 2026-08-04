@@ -6,6 +6,7 @@ import com.olek.banking.account.application.OpenAccountService;
 import com.olek.banking.account.domain.AccountRepository;
 import com.olek.banking.account.infrastructure.persistence.InMemoryAccountRepository;
 import com.olek.banking.movement.domain.AccountMovementRepository;
+import com.olek.banking.shared.application.transaction.TransactionExecutor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -73,18 +74,23 @@ public class AccountConfiguration {
     /**
      * Creates the deposit funds use case.
      *
-     * @param accountRepository account persistence port
-     * @return configured deposit funds service
+     * @param accountRepository   account persistence port
+     * @param movementRepository  movement persistence port
+     * @param transactionExecutor transaction boundary
+     * @param clock               source of the current time
+     * @return configured deposit service
      */
     @Bean
     DepositFundsService depositFundsService(
             AccountRepository accountRepository,
             AccountMovementRepository movementRepository,
+            TransactionExecutor transactionExecutor,
             Clock clock
     ) {
         return new DepositFundsService(
                 accountRepository,
                 movementRepository,
+                transactionExecutor,
                 clock
         );
     }

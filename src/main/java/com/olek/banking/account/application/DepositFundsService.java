@@ -5,6 +5,7 @@ import com.olek.banking.account.domain.AccountRepository;
 import com.olek.banking.account.domain.exception.AccountNotFoundException;
 import com.olek.banking.movement.domain.AccountMovement;
 import com.olek.banking.movement.domain.AccountMovementRepository;
+import com.olek.banking.shared.application.transaction.TransactionExecutor;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -17,16 +18,21 @@ public final class DepositFundsService {
 
     private final AccountRepository accountRepository;
     private final AccountMovementRepository movementRepository;
+    private final TransactionExecutor transactionExecutor;
     private final Clock clock;
 
     /**
      * Creates the deposit funds service.
      *
-     * @param accountRepository account persistence port
+     * @param accountRepository   account persistence port
+     * @param movementRepository  account movement persistence port
+     * @param transactionExecutor transaction boundary
+     * @param clock               source of the current time
      */
     public DepositFundsService(
             AccountRepository accountRepository,
             AccountMovementRepository movementRepository,
+            TransactionExecutor transactionExecutor,
             Clock clock
     ) {
         this.accountRepository = Objects.requireNonNull(
@@ -39,6 +45,11 @@ public final class DepositFundsService {
                 "movementRepository must not be null"
         );
 
+        this.transactionExecutor = Objects.requireNonNull(
+                transactionExecutor,
+                "transactionExecutor must not be null"
+        );
+
         this.clock = Objects.requireNonNull(
                 clock,
                 "clock must not be null"
@@ -46,12 +57,10 @@ public final class DepositFundsService {
     }
 
     /**
-     * Deposits funds into an existing account and persists its new balance.
+     * Deposits funds and records the movement atomically.
      *
      * @param command deposit information
      * @return updated account
-     * @throws NullPointerException     if the command is {@code null}
-     * @throws AccountNotFoundException if the account does not exist
      */
     public Account deposit(DepositFundsCommand command) {
         Objects.requireNonNull(
@@ -59,6 +68,14 @@ public final class DepositFundsService {
                 "command must not be null"
         );
 
+        return transactionExecutor.execute(
+                () -> executeDeposit(command)
+        );
+    }
+
+    private Account executeDeposit(
+            DepositFundsCommand command
+    ) {
         Account account = accountRepository
                 .findById(command.accountId())
                 .orElseThrow(
@@ -68,17 +85,18 @@ public final class DepositFundsService {
                 );
 
         account.deposit(command.amount());
-        accountRepository.save(account);
+        Account savedAccount =
+                accountRepository.save(account);
 
         AccountMovement movement = AccountMovement.deposit(
-                account.id(),
+                savedAccount.id(),
                 command.amount(),
-                account.balance(),
+                savedAccount.balance(),
                 Instant.now(clock)
         );
 
         movementRepository.save(movement);
 
-        return account;
+        return savedAccount;
     }
 }

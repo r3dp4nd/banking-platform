@@ -2,6 +2,7 @@ package com.olek.banking.transfer.configuration;
 
 import com.olek.banking.account.domain.AccountRepository;
 import com.olek.banking.movement.domain.AccountMovementRepository;
+import com.olek.banking.shared.application.transaction.TransactionExecutor;
 import com.olek.banking.transfer.application.CreateTransferService;
 import com.olek.banking.transfer.application.GetTransferService;
 import com.olek.banking.transfer.domain.TransferRepository;
@@ -32,9 +33,11 @@ public class TransferConfiguration {
     /**
      * Creates the transfer processing use case.
      *
-     * @param accountRepository  account persistence port
-     * @param transferRepository transfer persistence port
-     * @param clock              source of the current time
+     * @param accountRepository   account persistence port
+     * @param transferRepository  transfer persistence port
+     * @param movementRepository  movement persistence port
+     * @param transactionExecutor transaction boundary
+     * @param clock               source of the current time
      * @return configured transfer service
      */
     @Bean
@@ -42,12 +45,14 @@ public class TransferConfiguration {
             AccountRepository accountRepository,
             TransferRepository transferRepository,
             AccountMovementRepository movementRepository,
+            TransactionExecutor transactionExecutor,
             Clock clock
     ) {
         return new CreateTransferService(
                 accountRepository,
                 transferRepository,
                 movementRepository,
+                transactionExecutor,
                 clock
         );
     }

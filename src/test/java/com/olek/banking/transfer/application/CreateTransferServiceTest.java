@@ -13,6 +13,7 @@ import com.olek.banking.movement.domain.MovementType;
 import com.olek.banking.movement.infrastructure.persistence.InMemoryAccountMovementRepository;
 import com.olek.banking.shared.domain.CurrencyCode;
 import com.olek.banking.shared.domain.Money;
+import com.olek.banking.shared.infrastructure.transaction.DirectTransactionExecutor;
 import com.olek.banking.transfer.domain.Transfer;
 import com.olek.banking.transfer.domain.TransferRepository;
 import com.olek.banking.transfer.domain.TransferStatus;
@@ -55,6 +56,7 @@ class CreateTransferServiceTest {
                 accountRepository,
                 transferRepository,
                 movementRepository,
+                new DirectTransactionExecutor(),
                 clock
         );
     }
