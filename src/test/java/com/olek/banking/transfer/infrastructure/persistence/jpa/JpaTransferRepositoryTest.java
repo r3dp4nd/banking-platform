@@ -3,11 +3,14 @@ package com.olek.banking.transfer.infrastructure.persistence.jpa;
 import com.olek.banking.account.domain.AccountId;
 import com.olek.banking.shared.domain.CurrencyCode;
 import com.olek.banking.shared.domain.Money;
+import com.olek.banking.transfer.application.exception.ConcurrentIdempotencyException;
 import com.olek.banking.transfer.domain.Transfer;
 import com.olek.banking.transfer.domain.TransferId;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -16,6 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -51,7 +55,7 @@ class JpaTransferRepositoryTest {
                 TransferPersistenceMapper.toEntity(transfer);
 
         when(
-                springDataRepository.save(
+                springDataRepository.saveAndFlush(
                         any(TransferJpaEntity.class)
                 )
         ).thenReturn(persistedEntity);
@@ -63,7 +67,8 @@ class JpaTransferRepositoryTest {
                         TransferJpaEntity.class
                 );
 
-        verify(springDataRepository).save(captor.capture());
+        verify(springDataRepository)
+                .saveAndFlush(captor.capture());
 
         assertThat(captor.getValue().getId())
                 .isEqualTo(TRANSFER_ID);
@@ -143,6 +148,78 @@ class JpaTransferRepositoryTest {
                 .singleElement()
                 .extracting(Transfer::id)
                 .isEqualTo(new TransferId(TRANSFER_ID));
+    }
+
+    @Test
+    void shouldTranslateConcurrentIdempotencyCollision() {
+        Transfer transfer = transfer();
+
+        ConstraintViolationException constraintException =
+                new ConstraintViolationException(
+                        "duplicate key",
+                        new java.sql.SQLException(
+                                "duplicate key value violates unique constraint"
+                        ),
+                        "insert into bank_transfer",
+                        "uk_bank_transfer_idempotency_key"
+                );
+
+        DataIntegrityViolationException dataException =
+                new DataIntegrityViolationException(
+                        "could not execute statement",
+                        constraintException
+                );
+
+        when(
+                springDataRepository.saveAndFlush(
+                        any(TransferJpaEntity.class)
+                )
+        ).thenThrow(dataException);
+
+        assertThatThrownBy(() -> repository.save(transfer))
+                .isInstanceOf(
+                        ConcurrentIdempotencyException.class
+                )
+                .hasMessage(
+                        "idempotency key was persisted concurrently"
+                )
+                .satisfies(exception -> {
+                    ConcurrentIdempotencyException collision =
+                            (ConcurrentIdempotencyException) exception;
+
+                    assertThat(collision.idempotencyKey())
+                            .isEqualTo("transfer-request-001");
+                });
+    }
+
+    @Test
+    void shouldPreserveUnrelatedIntegrityViolation() {
+        Transfer transfer = transfer();
+
+        ConstraintViolationException constraintException =
+                new ConstraintViolationException(
+                        "foreign key violation",
+                        new java.sql.SQLException(
+                                "source account does not exist"
+                        ),
+                        "insert into bank_transfer",
+                        "fk_bank_transfer_source_account"
+                );
+
+        DataIntegrityViolationException dataException =
+                new DataIntegrityViolationException(
+                        "could not execute statement",
+                        constraintException
+                );
+
+        when(
+                springDataRepository.saveAndFlush(
+                        any(TransferJpaEntity.class)
+                )
+        ).thenThrow(dataException);
+
+        assertThatThrownBy(() -> repository.save(transfer))
+                .isSameAs(dataException);
     }
 
     private Transfer transfer() {

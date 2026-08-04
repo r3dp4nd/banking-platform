@@ -1,9 +1,12 @@
 package com.olek.banking.transfer.infrastructure.persistence.jpa;
 
+import com.olek.banking.transfer.application.exception.ConcurrentIdempotencyException;
 import com.olek.banking.transfer.domain.Transfer;
 import com.olek.banking.transfer.domain.TransferId;
 import com.olek.banking.transfer.domain.TransferRepository;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -17,6 +20,9 @@ import java.util.Optional;
 @Profile("!memory")
 public class JpaTransferRepository
         implements TransferRepository {
+
+    private static final String IDEMPOTENCY_CONSTRAINT =
+            "uk_bank_transfer_idempotency_key";
 
     private final SpringDataTransferJpaRepository jpaRepository;
 
@@ -47,11 +53,22 @@ public class JpaTransferRepository
                 "transfer must not be null"
         );
 
-        TransferJpaEntity savedEntity = jpaRepository.save(
-                TransferPersistenceMapper.toEntity(transfer)
-        );
+        try {
+            TransferJpaEntity savedEntity = jpaRepository.saveAndFlush(
+                    TransferPersistenceMapper.toEntity(transfer)
+            );
 
-        return TransferPersistenceMapper.toDomain(savedEntity);
+            return TransferPersistenceMapper.toDomain(savedEntity);
+        } catch (DataIntegrityViolationException exception) {
+            if (isIdempotencyConstraintViolation(exception)) {
+                throw new ConcurrentIdempotencyException(
+                        transfer.idempotencyKey(),
+                        exception
+                );
+            }
+
+            throw exception;
+        }
     }
 
     /**
@@ -136,5 +153,23 @@ public class JpaTransferRepository
         }
 
         return normalized;
+    }
+
+    private boolean isIdempotencyConstraintViolation(
+            Throwable exception
+    ) {
+        Throwable current = exception;
+
+        while (current != null) {
+            if (current instanceof ConstraintViolationException violation) {
+                return IDEMPOTENCY_CONSTRAINT.equalsIgnoreCase(
+                        violation.getConstraintName()
+                );
+            }
+
+            current = current.getCause();
+        }
+
+        return false;
     }
 }

@@ -10,6 +10,7 @@ import com.olek.banking.movement.domain.AccountMovementRepository;
 import com.olek.banking.shared.application.transaction.TransactionExecutor;
 import com.olek.banking.shared.domain.DomainException;
 import com.olek.banking.shared.domain.Money;
+import com.olek.banking.transfer.application.exception.ConcurrentIdempotencyException;
 import com.olek.banking.transfer.domain.Transfer;
 import com.olek.banking.transfer.domain.TransferId;
 import com.olek.banking.transfer.domain.TransferRepository;
@@ -94,16 +95,19 @@ public final class CreateTransferService {
                 "command must not be null"
         );
 
-        TransferExecutionResult result =
-                transactionExecutor.execute(
-                        () -> executeTransfer(command)
-                );
+        try {
+            TransferExecutionResult result =
+                    transactionExecutor.execute(
+                            () -> executeTransfer(command)
+                    );
 
-        if (result.wasRejected()) {
-            throw result.rejection();
+            return completeResult(result);
+        } catch (ConcurrentIdempotencyException exception) {
+            return transactionExecutor.execute(
+                    () -> resolveConcurrentRequest(command)
+            );
         }
 
-        return result.transfer();
     }
 
     private TransferExecutionResult executeTransfer(
@@ -374,6 +378,36 @@ public final class CreateTransferService {
                     amount.currency()
             );
         }
+    }
+
+    private Transfer completeResult(
+            TransferExecutionResult result
+    ) {
+        if (result.wasRejected()) {
+            throw result.rejection();
+        }
+
+        return result.transfer();
+    }
+
+    private Transfer resolveConcurrentRequest(
+            CreateTransferCommand command
+    ) {
+        Transfer existingTransfer = transferRepository
+                .findByIdempotencyKey(
+                        command.idempotencyKey()
+                )
+                .orElseThrow(
+                        () -> new IllegalStateException(
+                                "concurrent transfer was not found "
+                                        + "after idempotency collision"
+                        )
+                );
+
+        return handleExistingTransfer(
+                existingTransfer,
+                command
+        );
     }
 
     private record TransferExecutionResult(
