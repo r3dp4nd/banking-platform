@@ -14,11 +14,13 @@ import com.olek.banking.movement.domain.MovementType;
 import com.olek.banking.movement.infrastructure.persistence.InMemoryAccountMovementRepository;
 import com.olek.banking.shared.domain.CurrencyCode;
 import com.olek.banking.shared.domain.Money;
+import com.olek.banking.shared.infrastructure.MutableClock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 
@@ -30,6 +32,11 @@ class DepositFundsServiceTest {
     private static final Instant CREATED_AT =
             Instant.parse("2026-08-04T12:00:00Z");
 
+    MutableClock clock = new MutableClock(
+            CREATED_AT,
+            ZoneOffset.UTC
+    );
+
     private AccountRepository accountRepository;
     private AccountMovementRepository movementRepository;
     private DepositFundsService service;
@@ -40,10 +47,7 @@ class DepositFundsServiceTest {
         movementRepository =
                 new InMemoryAccountMovementRepository();
 
-        Clock clock = Clock.fixed(
-                CREATED_AT,
-                ZoneOffset.UTC
-        );
+
 
         service = new DepositFundsService(
                 accountRepository,
@@ -193,6 +197,8 @@ class DepositFundsServiceTest {
                 )
         );
 
+        clock.advance(Duration.ofSeconds(1));
+
         service.deposit(
                 new DepositFundsCommand(
                         account.id(),
@@ -208,7 +214,7 @@ class DepositFundsServiceTest {
                 .containsExactly(
                         money("100.00", CurrencyCode.PEN),
                         money("150.00", CurrencyCode.PEN)
-                        );
+                );
     }
 
     private Account activeAccount(CurrencyCode currency) {
