@@ -21,6 +21,11 @@ public enum ApiErrorCode {
     INVALID_PARAMETER,
 
     /**
+     * A required HTTP header is missing.
+     */
+    MISSING_REQUIRED_HEADER,
+
+    /**
      * The server encountered an unexpected error.
      */
     INTERNAL_SERVER_ERROR

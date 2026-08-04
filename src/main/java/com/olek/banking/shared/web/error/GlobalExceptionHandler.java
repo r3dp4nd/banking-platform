@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -173,6 +174,34 @@ public class GlobalExceptionHandler {
                 Map.of(
                         "parameter", exception.parameter(),
                         "value", exception.value()
+                ),
+                request.getRequestURI(),
+                Instant.now(clock)
+        );
+
+        return ResponseEntity
+                .badRequest()
+                .body(response);
+    }
+
+    /**
+     * Handles missing required HTTP headers.
+     *
+     * @param exception missing header exception
+     * @param request   current HTTP request
+     * @return bad-request error response
+     */
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingHeader(
+            MissingRequestHeaderException exception,
+            HttpServletRequest request
+    ) {
+        ApiErrorResponse response = new ApiErrorResponse(
+                ApiErrorCode.MISSING_REQUIRED_HEADER.name(),
+                "required request header is missing",
+                Map.of(
+                        "header",
+                        exception.getHeaderName()
                 ),
                 request.getRequestURI(),
                 Instant.now(clock)
