@@ -33,5 +33,10 @@ public enum DomainErrorCode {
     /**
      * An account with a remaining balance cannot be closed.
      */
-    ACCOUNT_HAS_REMAINING_BALANCE
+    ACCOUNT_HAS_REMAINING_BALANCE,
+
+    /**
+     * The requested account number is already registered.
+     */
+    ACCOUNT_NUMBER_ALREADY_EXISTS
 }
