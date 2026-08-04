@@ -1,10 +1,12 @@
 package com.olek.banking.transfer.web;
 
+import com.olek.banking.transfer.application.CreateTransferResult;
 import com.olek.banking.transfer.application.CreateTransferService;
 import com.olek.banking.transfer.application.GetTransferService;
 import com.olek.banking.transfer.domain.Transfer;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Objects;
@@ -43,7 +45,7 @@ public class TransferController {
     }
 
     /**
-     * Creates and processes an internal money transfer.
+     * Creates or idempotently recovers an internal transfer.
      *
      * @param idempotencyKey key used to prevent duplicated processing
      * @param request        validated transfer request
@@ -51,19 +53,30 @@ public class TransferController {
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public TransferResponse createTransfer(
+    public ResponseEntity<TransferResponse> createTransfer(
             @RequestHeader(IDEMPOTENCY_KEY_HEADER)
             String idempotencyKey,
             @Valid @RequestBody CreateTransferRequest request
     ) {
-        Transfer transfer = createTransferService.create(
+        CreateTransferResult result = createTransferService.create(
                 TransferWebMapper.toCommand(
                         request,
                         idempotencyKey
                 )
         );
 
-        return TransferWebMapper.toResponse(transfer);
+        TransferResponse response =
+                TransferWebMapper.toResponse(
+                        result.transfer()
+                );
+
+        if (result.wasCreated()) {
+            return ResponseEntity
+                    .status(HttpStatus.CREATED)
+                    .body(response);
+        }
+
+        return ResponseEntity.ok(response);
     }
 
     /**

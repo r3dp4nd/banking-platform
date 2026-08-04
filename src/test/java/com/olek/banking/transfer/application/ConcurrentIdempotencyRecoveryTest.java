@@ -77,9 +77,16 @@ class ConcurrentIdempotencyRecoveryTest {
                         Clock.fixed(NOW, ZoneOffset.UTC)
                 );
 
-        Transfer result = service.create(command);
+        CreateTransferResult result =
+                service.create(command);
 
-        assertThat(result).isSameAs(existingTransfer);
+        assertThat(result.transfer())
+                .isSameAs(existingTransfer);
+
+        assertThat(result.outcome())
+                .isEqualTo(
+                        CreateTransferResult.Outcome.RECOVERED
+                );
     }
 
     private CreateTransferCommand command(

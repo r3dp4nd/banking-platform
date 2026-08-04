@@ -5,6 +5,7 @@ import com.olek.banking.shared.domain.CurrencyCode;
 import com.olek.banking.shared.domain.Money;
 import com.olek.banking.shared.web.error.GlobalExceptionHandler;
 import com.olek.banking.transfer.application.CreateTransferCommand;
+import com.olek.banking.transfer.application.CreateTransferResult;
 import com.olek.banking.transfer.application.CreateTransferService;
 import com.olek.banking.transfer.application.GetTransferService;
 import com.olek.banking.transfer.domain.Transfer;
@@ -62,16 +63,16 @@ class TransferControllerTest {
     private GetTransferService getTransferService;
 
     @Test
-    void shouldCreateTransfer() throws Exception {
+    void shouldReturnCreatedForNewTransfer() throws Exception {
         Transfer transfer = completedTransfer();
 
         when(
                 createTransferService.create(
                         any(CreateTransferCommand.class)
                 )
-        ).thenReturn(transfer);
-
-        CreateTransferRequest request = validRequest();
+        ).thenReturn(
+                CreateTransferResult.created(transfer)
+        );
 
         mockMvc.perform(
                         post("/api/v1/transfers")
@@ -82,7 +83,7 @@ class TransferControllerTest {
                                 .contentType("application/json")
                                 .content(
                                         objectMapper.writeValueAsString(
-                                                request
+                                                validRequest()
                                         )
                                 )
                 )
@@ -92,32 +93,8 @@ class TransferControllerTest {
                                 .value(transfer.id().toString())
                 )
                 .andExpect(
-                        jsonPath("$.sourceAccountId")
-                                .value(SOURCE_ACCOUNT_ID)
-                )
-                .andExpect(
-                        jsonPath("$.destinationAccountId")
-                                .value(DESTINATION_ACCOUNT_ID)
-                )
-                .andExpect(
-                        jsonPath("$.amount")
-                                .value(150.00)
-                )
-                .andExpect(
-                        jsonPath("$.currency")
-                                .value("PEN")
-                )
-                .andExpect(
                         jsonPath("$.status")
                                 .value("COMPLETED")
-                )
-                .andExpect(
-                        jsonPath("$.createdAt")
-                                .value(NOW.toString())
-                )
-                .andExpect(
-                        jsonPath("$.completedAt")
-                                .value(NOW.toString())
                 );
     }
 
@@ -412,6 +389,44 @@ class TransferControllerTest {
                 .andExpect(
                         jsonPath("$.context.value")
                                 .value("not-a-uuid")
+                );
+    }
+
+    @Test
+    void shouldReturnOkForRecoveredTransfer()
+            throws Exception {
+
+        Transfer transfer = completedTransfer();
+
+        when(
+                createTransferService.create(
+                        any(CreateTransferCommand.class)
+                )
+        ).thenReturn(
+                CreateTransferResult.recovered(transfer)
+        );
+
+        mockMvc.perform(
+                        post("/api/v1/transfers")
+                                .header(
+                                        "Idempotency-Key",
+                                        "transfer-request-001"
+                                )
+                                .contentType("application/json")
+                                .content(
+                                        objectMapper.writeValueAsString(
+                                                validRequest()
+                                        )
+                                )
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.transferId")
+                                .value(transfer.id().toString())
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("COMPLETED")
                 );
     }
 

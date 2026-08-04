@@ -7,9 +7,9 @@ import com.olek.banking.account.domain.AccountStatus;
 import com.olek.banking.movement.domain.AccountMovementRepository;
 import com.olek.banking.shared.domain.CurrencyCode;
 import com.olek.banking.shared.domain.Money;
-import com.olek.banking.transfer.domain.Transfer;
 import com.olek.banking.transfer.domain.TransferRepository;
 import com.olek.banking.transfer.domain.TransferStatus;
+import com.olek.banking.transfer.domain.exception.IdempotencyKeyConflictException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -20,6 +20,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 
@@ -71,21 +72,21 @@ class ConcurrentIdempotencyIntegrationTest {
 
         CountDownLatch start = new CountDownLatch(1);
 
-        Callable<Transfer> request = () -> {
+        Callable<CreateTransferResult> request = () -> {
             start.await();
             return transferService.create(command);
         };
 
-        Transfer firstResult;
-        Transfer secondResult;
+        CreateTransferResult firstResult;
+        CreateTransferResult secondResult;
 
         try (ExecutorService executor =
                      Executors.newFixedThreadPool(2)) {
 
-            Future<Transfer> first =
+            Future<CreateTransferResult> first =
                     executor.submit(request);
 
-            Future<Transfer> second =
+            Future<CreateTransferResult> second =
                     executor.submit(request);
 
             start.countDown();
@@ -94,13 +95,13 @@ class ConcurrentIdempotencyIntegrationTest {
             secondResult = second.get();
         }
 
-        assertThat(firstResult.id())
-                .isEqualTo(secondResult.id());
+        assertThat(firstResult.transfer().id())
+                .isEqualTo(secondResult.transfer().id());
 
-        assertThat(firstResult.status())
+        assertThat(firstResult.transfer().status())
                 .isEqualTo(TransferStatus.COMPLETED);
 
-        assertThat(secondResult.status())
+        assertThat(secondResult.transfer().status())
                 .isEqualTo(TransferStatus.COMPLETED);
 
         assertThat(
@@ -116,7 +117,7 @@ class ConcurrentIdempotencyIntegrationTest {
 
         assertThat(movementRepository.findAll())
                 .filteredOn(movement ->
-                        firstResult.id().equals(
+                        firstResult.transfer().id().equals(
                                 movement.transferId()
                         )
                 )
@@ -135,6 +136,10 @@ class ConcurrentIdempotencyIntegrationTest {
 
         assertThat(persistedDestination.balance())
                 .isEqualTo(money("150.00"));
+
+        assertThat(firstResult.transfer().id())
+                .isEqualTo(secondResult.transfer().id());
+
     }
 
     @Test
@@ -197,23 +202,54 @@ class ConcurrentIdempotencyIntegrationTest {
 
             start.countDown();
 
-            results = List.of(
-                    first.get(),
-                    second.get()
-            );
+            results = new ArrayList<>();
+
+            for (Future<Object> future : List.of(first, second)) {
+                try {
+                    results.add(future.get());
+                } catch (ExecutionException exception) {
+                    results.add(exception.getCause());
+                }
+            }
         }
 
         assertThat(results)
-                .filteredOn(Transfer.class::isInstance)
+                .filteredOn(
+                        CreateTransferResult.class::isInstance
+                )
                 .hasSize(1);
 
         assertThat(results)
                 .filteredOn(
-                        com.olek.banking.transfer.domain.exception
-                                .IdempotencyKeyConflictException.class
-                                ::isInstance
+                        IdempotencyKeyConflictException.class::isInstance
                 )
                 .hasSize(1);
+
+        CreateTransferResult created =
+                (CreateTransferResult) results.stream()
+                        .filter(CreateTransferResult.class::isInstance)
+                        .findFirst()
+                        .orElseThrow();
+
+        assertThat(created.outcome())
+                .isEqualTo(CreateTransferResult.Outcome.CREATED);
+
+        assertThat(created.transfer().idempotencyKey())
+                .isEqualTo(idempotencyKey);
+
+        assertThat(created.transfer().amount())
+                .isEqualTo(money("100.00"));
+
+        IdempotencyKeyConflictException conflict =
+                (IdempotencyKeyConflictException) results.stream()
+                        .filter(IdempotencyKeyConflictException.class::isInstance)
+                        .findFirst()
+                        .orElseThrow();
+
+        assertThat(conflict.getMessage())
+                .contains(
+                        "idempotency key was already used with different data"
+                );
 
         assertThat(
                 transferRepository.findAll()
@@ -223,6 +259,7 @@ class ConcurrentIdempotencyIntegrationTest {
                                         .equals(idempotencyKey)
                         )
         ).hasSize(1);
+
     }
 
     private Account saveAccount(

@@ -79,7 +79,7 @@ class CreateTransferServiceTest {
         accountRepository.save(source);
         accountRepository.save(destination);
 
-        Transfer transfer = service.create(
+        CreateTransferResult result = service.create(
                 command(
                         source.id(),
                         destination.id(),
@@ -87,6 +87,8 @@ class CreateTransferServiceTest {
                         "transfer-request-001"
                 )
         );
+
+        Transfer transfer = result.transfer();
 
         assertThat(transfer.status())
                 .isEqualTo(TransferStatus.COMPLETED);
@@ -140,6 +142,13 @@ class CreateTransferServiceTest {
                     assertThat(movement.createdAt())
                             .isEqualTo(NOW);
                 });
+
+        assertThat(result.outcome())
+                .isEqualTo(
+                        CreateTransferResult.Outcome.CREATED
+                );
+
+        assertThat(result.wasCreated()).isTrue();
     }
 
     @Test
@@ -164,10 +173,24 @@ class CreateTransferServiceTest {
                 "transfer-request-001"
         );
 
-        Transfer firstResult = service.create(command);
-        Transfer secondResult = service.create(command);
+        CreateTransferResult firstResult =
+                service.create(command);
 
-        assertThat(secondResult).isSameAs(firstResult);
+        CreateTransferResult secondResult =
+                service.create(command);
+
+        assertThat(firstResult.outcome())
+                .isEqualTo(
+                        CreateTransferResult.Outcome.CREATED
+                );
+
+        assertThat(secondResult.outcome())
+                .isEqualTo(
+                        CreateTransferResult.Outcome.RECOVERED
+                );
+
+        assertThat(secondResult.transfer().id())
+                .isEqualTo(firstResult.transfer().id());
 
         assertThat(source.balance())
                 .isEqualTo(money("350.00"));
@@ -175,8 +198,9 @@ class CreateTransferServiceTest {
         assertThat(destination.balance())
                 .isEqualTo(money("250.00"));
 
-        assertThat(transferRepository.findAll())
-                .containsExactly(firstResult);
+        assertThat(movementRepository.findAll())
+                .hasSize(2);
+
     }
 
     @Test
@@ -362,10 +386,17 @@ class CreateTransferServiceTest {
                 "transfer-request-001"
         );
 
-        Transfer firstResult = service.create(command);
-        Transfer secondResult = service.create(command);
+        CreateTransferResult firstResult =
+                service.create(command);
 
-        assertThat(secondResult).isSameAs(firstResult);
+        CreateTransferResult secondResult =
+                service.create(command);
+
+        assertThat(secondResult.transfer().id())
+                .isEqualTo(firstResult.transfer().id());
+
+        assertThat(secondResult.outcome())
+                .isEqualTo(CreateTransferResult.Outcome.RECOVERED);
 
         assertThat(source.balance())
                 .isEqualTo(money("350.00"));

@@ -7,7 +7,6 @@ import com.olek.banking.account.domain.AccountStatus;
 import com.olek.banking.account.domain.exception.InsufficientBalanceException;
 import com.olek.banking.shared.domain.CurrencyCode;
 import com.olek.banking.shared.domain.Money;
-import com.olek.banking.transfer.domain.Transfer;
 import com.olek.banking.transfer.domain.TransferStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -97,23 +96,23 @@ class ConcurrentTransferIntegrationTest {
             );
 
             long completedCount = results.stream()
-                    .filter(Transfer.class::isInstance)
-                    .map(Transfer.class::cast)
+                    .filter(CreateTransferResult.class::isInstance)
+                    .map(CreateTransferResult.class::cast)
+                    .map(CreateTransferResult::transfer)
                     .filter(transfer ->
-                            transfer.status()
-                                    == TransferStatus.COMPLETED
+                            transfer.status() == TransferStatus.COMPLETED
                     )
                     .count();
 
             long rejectedCount = results.stream()
-                    .filter(
-                            InsufficientBalanceException.class
-                                    ::isInstance
-                    )
+                    .filter(InsufficientBalanceException.class::isInstance)
                     .count();
 
-            assertThat(completedCount).isEqualTo(1);
-            assertThat(rejectedCount).isEqualTo(1);
+            assertThat(completedCount)
+                    .isEqualTo(1);
+
+            assertThat(rejectedCount)
+                    .isEqualTo(1);
         }
 
         Account persistedSource = accountRepository

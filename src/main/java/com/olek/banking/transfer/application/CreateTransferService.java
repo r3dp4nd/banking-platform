@@ -84,12 +84,12 @@ public final class CreateTransferService {
     }
 
     /**
-     * Creates and processes an internal transfer atomically.
+     * Creates or idempotently recovers an internal transfer.
      *
      * @param command transfer information
-     * @return created or previously processed transfer
+     * @return transfer result including its idempotency outcome
      */
-    public Transfer create(CreateTransferCommand command) {
+    public CreateTransferResult create(CreateTransferCommand command) {
         Objects.requireNonNull(
                 command,
                 "command must not be null"
@@ -103,8 +103,12 @@ public final class CreateTransferService {
 
             return completeResult(result);
         } catch (ConcurrentIdempotencyException exception) {
-            return transactionExecutor.execute(
+            Transfer recoveredTransfer = transactionExecutor.execute(
                     () -> resolveConcurrentRequest(command)
+            );
+
+            return CreateTransferResult.recovered(
+                    recoveredTransfer
             );
         }
 
@@ -120,7 +124,7 @@ public final class CreateTransferService {
                 .orElse(null);
 
         if (existingTransfer != null) {
-            return TransferExecutionResult.completed(
+            return TransferExecutionResult.recovered(
                     handleExistingTransfer(
                             existingTransfer,
                             command
@@ -215,7 +219,7 @@ public final class CreateTransferService {
         Transfer completedTransfer =
                 transferRepository.save(transfer);
 
-        return TransferExecutionResult.completed(
+        return TransferExecutionResult.created(
                 completedTransfer
         );
     }
@@ -380,14 +384,22 @@ public final class CreateTransferService {
         }
     }
 
-    private Transfer completeResult(
+    private CreateTransferResult completeResult(
             TransferExecutionResult result
     ) {
         if (result.wasRejected()) {
             throw result.rejection();
         }
 
-        return result.transfer();
+        if (result.wasRecovered()) {
+            return CreateTransferResult.recovered(
+                    result.transfer()
+            );
+        }
+
+        return CreateTransferResult.created(
+                result.transfer()
+        );
     }
 
     private Transfer resolveConcurrentRequest(
@@ -412,15 +424,27 @@ public final class CreateTransferService {
 
     private record TransferExecutionResult(
             Transfer transfer,
-            DomainException rejection
+            DomainException rejection,
+            boolean recovered
     ) {
 
-        private static TransferExecutionResult completed(
+        private static TransferExecutionResult created(
                 Transfer transfer
         ) {
             return new TransferExecutionResult(
                     transfer,
-                    null
+                    null,
+                    false
+            );
+        }
+
+        private static TransferExecutionResult recovered(
+                Transfer transfer
+        ) {
+            return new TransferExecutionResult(
+                    transfer,
+                    null,
+                    true
             );
         }
 
@@ -430,12 +454,17 @@ public final class CreateTransferService {
         ) {
             return new TransferExecutionResult(
                     transfer,
-                    rejection
+                    rejection,
+                    false
             );
         }
 
         private boolean wasRejected() {
             return rejection != null;
+        }
+
+        private boolean wasRecovered() {
+            return recovered;
         }
     }
 
