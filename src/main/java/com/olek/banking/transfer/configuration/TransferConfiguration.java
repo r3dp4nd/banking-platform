@@ -1,6 +1,7 @@
 package com.olek.banking.transfer.configuration;
 
 import com.olek.banking.account.domain.AccountRepository;
+import com.olek.banking.movement.domain.AccountMovementRepository;
 import com.olek.banking.transfer.application.CreateTransferService;
 import com.olek.banking.transfer.application.GetTransferService;
 import com.olek.banking.transfer.domain.TransferRepository;
@@ -38,11 +39,13 @@ public class TransferConfiguration {
     CreateTransferService createTransferService(
             AccountRepository accountRepository,
             TransferRepository transferRepository,
+            AccountMovementRepository movementRepository,
             Clock clock
     ) {
         return new CreateTransferService(
                 accountRepository,
                 transferRepository,
+                movementRepository,
                 clock
         );
     }

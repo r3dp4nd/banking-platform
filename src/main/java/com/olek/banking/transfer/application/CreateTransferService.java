@@ -8,6 +8,8 @@ import com.olek.banking.account.domain.exception.AccountNotActiveException;
 import com.olek.banking.account.domain.exception.AccountNotFoundException;
 import com.olek.banking.account.domain.exception.CurrencyMismatchException;
 import com.olek.banking.account.domain.exception.InsufficientBalanceException;
+import com.olek.banking.movement.domain.AccountMovement;
+import com.olek.banking.movement.domain.AccountMovementRepository;
 import com.olek.banking.shared.domain.DomainException;
 import com.olek.banking.shared.domain.Money;
 import com.olek.banking.transfer.domain.Transfer;
@@ -26,6 +28,7 @@ public final class CreateTransferService {
 
     private final AccountRepository accountRepository;
     private final TransferRepository transferRepository;
+    private final AccountMovementRepository movementRepository;
     private final Clock clock;
 
     /**
@@ -38,6 +41,7 @@ public final class CreateTransferService {
     public CreateTransferService(
             AccountRepository accountRepository,
             TransferRepository transferRepository,
+            AccountMovementRepository movementRepository,
             Clock clock
     ) {
         this.accountRepository = Objects.requireNonNull(
@@ -48,6 +52,11 @@ public final class CreateTransferService {
         this.transferRepository = Objects.requireNonNull(
                 transferRepository,
                 "transferRepository must not be null"
+        );
+
+        this.movementRepository = Objects.requireNonNull(
+                movementRepository,
+                "movementRepository must not be null"
         );
 
         this.clock = Objects.requireNonNull(
@@ -122,7 +131,30 @@ public final class CreateTransferService {
             accountRepository.save(sourceAccount);
             accountRepository.save(destinationAccount);
 
-            transfer.complete(Instant.now(clock));
+            Instant processedAt = Instant.now(clock);
+
+            AccountMovement debitMovement =
+                    AccountMovement.debit(
+                            sourceAccount.id(),
+                            transfer.id(),
+                            command.amount(),
+                            sourceAccount.balance(),
+                            processedAt
+                    );
+
+            AccountMovement creditMovement =
+                    AccountMovement.credit(
+                            destinationAccount.id(),
+                            transfer.id(),
+                            command.amount(),
+                            destinationAccount.balance(),
+                            processedAt
+                    );
+
+            movementRepository.save(debitMovement);
+            movementRepository.save(creditMovement);
+
+            transfer.complete(processedAt);
 
             return transferRepository.save(transfer);
         } catch (DomainException exception) {

@@ -7,6 +7,10 @@ import com.olek.banking.account.domain.AccountStatus;
 import com.olek.banking.account.domain.exception.AccountNotFoundException;
 import com.olek.banking.account.domain.exception.InsufficientBalanceException;
 import com.olek.banking.account.infrastructure.persistence.InMemoryAccountRepository;
+import com.olek.banking.movement.domain.AccountMovement;
+import com.olek.banking.movement.domain.AccountMovementRepository;
+import com.olek.banking.movement.domain.MovementType;
+import com.olek.banking.movement.infrastructure.persistence.InMemoryAccountMovementRepository;
 import com.olek.banking.shared.domain.CurrencyCode;
 import com.olek.banking.shared.domain.Money;
 import com.olek.banking.transfer.domain.Transfer;
@@ -32,12 +36,15 @@ class CreateTransferServiceTest {
 
     private AccountRepository accountRepository;
     private TransferRepository transferRepository;
+    private AccountMovementRepository movementRepository;
     private CreateTransferService service;
 
     @BeforeEach
     void setUp() {
         accountRepository = new InMemoryAccountRepository();
         transferRepository = new InMemoryTransferRepository();
+        movementRepository =
+                new InMemoryAccountMovementRepository();
 
         Clock clock = Clock.fixed(
                 NOW,
@@ -47,12 +54,13 @@ class CreateTransferServiceTest {
         service = new CreateTransferService(
                 accountRepository,
                 transferRepository,
+                movementRepository,
                 clock
         );
     }
 
     @Test
-    void shouldCompleteTransferAndUpdateBalances() {
+    void shouldCompleteTransferAndRecordMovements() {
         Account source = account(
                 "001-1234567890",
                 "500.00"
@@ -78,20 +86,55 @@ class CreateTransferServiceTest {
         assertThat(transfer.status())
                 .isEqualTo(TransferStatus.COMPLETED);
 
-        assertThat(transfer.createdAt())
-                .isEqualTo(NOW);
-
-        assertThat(transfer.completedAt())
-                .isEqualTo(NOW);
-
         assertThat(source.balance())
                 .isEqualTo(money("350.00"));
 
         assertThat(destination.balance())
                 .isEqualTo(money("250.00"));
 
-        assertThat(transferRepository.findById(transfer.id()))
-                .contains(transfer);
+        assertThat(
+                movementRepository.findByAccountId(source.id())
+        )
+                .singleElement()
+                .satisfies(movement -> {
+                    assertThat(movement.type())
+                            .isEqualTo(MovementType.DEBIT);
+
+                    assertThat(movement.transferId())
+                            .isEqualTo(transfer.id());
+
+                    assertThat(movement.amount())
+                            .isEqualTo(money("150.00"));
+
+                    assertThat(movement.balanceAfter())
+                            .isEqualTo(money("350.00"));
+
+                    assertThat(movement.createdAt())
+                            .isEqualTo(NOW);
+                });
+
+        assertThat(
+                movementRepository.findByAccountId(
+                        destination.id()
+                )
+        )
+                .singleElement()
+                .satisfies(movement -> {
+                    assertThat(movement.type())
+                            .isEqualTo(MovementType.CREDIT);
+
+                    assertThat(movement.transferId())
+                            .isEqualTo(transfer.id());
+
+                    assertThat(movement.amount())
+                            .isEqualTo(money("150.00"));
+
+                    assertThat(movement.balanceAfter())
+                            .isEqualTo(money("250.00"));
+
+                    assertThat(movement.createdAt())
+                            .isEqualTo(NOW);
+                });
     }
 
     @Test
@@ -290,6 +333,107 @@ class CreateTransferServiceTest {
 
         assertThat(destination.balance())
                 .isEqualTo(money("100.00"));
+    }
+
+    @Test
+    void shouldNotCreateDuplicateMovementsForRepeatedRequest() {
+        Account source = account(
+                "001-1234567890",
+                "500.00"
+        );
+
+        Account destination = account(
+                "001-0987654321",
+                "100.00"
+        );
+
+        accountRepository.save(source);
+        accountRepository.save(destination);
+
+        CreateTransferCommand command = command(
+                source.id(),
+                destination.id(),
+                "150.00",
+                "transfer-request-001"
+        );
+
+        Transfer firstResult = service.create(command);
+        Transfer secondResult = service.create(command);
+
+        assertThat(secondResult).isSameAs(firstResult);
+
+        assertThat(source.balance())
+                .isEqualTo(money("350.00"));
+
+        assertThat(destination.balance())
+                .isEqualTo(money("250.00"));
+
+        assertThat(movementRepository.findAll())
+                .hasSize(2);
+
+        assertThat(
+                movementRepository.findByAccountId(source.id())
+        )
+                .singleElement()
+                .extracting(AccountMovement::type)
+                .isEqualTo(MovementType.DEBIT);
+
+        assertThat(
+                movementRepository.findByAccountId(
+                        destination.id()
+                )
+        )
+                .singleElement()
+                .extracting(AccountMovement::type)
+                .isEqualTo(MovementType.CREDIT);
+    }
+
+    @Test
+    void shouldNotRecordMovementsWhenBalanceIsInsufficient() {
+        Account source = account(
+                "001-1234567890",
+                "50.00"
+        );
+
+        Account destination = account(
+                "001-0987654321",
+                "100.00"
+        );
+
+        accountRepository.save(source);
+        accountRepository.save(destination);
+
+        assertThatThrownBy(() ->
+                service.create(
+                        command(
+                                source.id(),
+                                destination.id(),
+                                "150.00",
+                                "transfer-request-001"
+                        )
+                )
+        )
+                .isInstanceOf(
+                        InsufficientBalanceException.class
+                );
+
+        assertThat(source.balance())
+                .isEqualTo(money("50.00"));
+
+        assertThat(destination.balance())
+                .isEqualTo(money("100.00"));
+
+        assertThat(movementRepository.findAll())
+                .isEmpty();
+
+        assertThat(
+                transferRepository.findByIdempotencyKey(
+                        "transfer-request-001"
+                )
+        )
+                .get()
+                .extracting(Transfer::status)
+                .isEqualTo(TransferStatus.REJECTED);
     }
 
     private Account account(

@@ -8,13 +8,19 @@ import com.olek.banking.account.domain.exception.AccountNotActiveException;
 import com.olek.banking.account.domain.exception.AccountNotFoundException;
 import com.olek.banking.account.domain.exception.CurrencyMismatchException;
 import com.olek.banking.account.infrastructure.persistence.InMemoryAccountRepository;
+import com.olek.banking.movement.domain.AccountMovement;
+import com.olek.banking.movement.domain.AccountMovementRepository;
+import com.olek.banking.movement.domain.MovementType;
+import com.olek.banking.movement.infrastructure.persistence.InMemoryAccountMovementRepository;
 import com.olek.banking.shared.domain.CurrencyCode;
 import com.olek.banking.shared.domain.Money;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -25,23 +31,41 @@ class DepositFundsServiceTest {
             Instant.parse("2026-08-04T12:00:00Z");
 
     private AccountRepository accountRepository;
+    private AccountMovementRepository movementRepository;
     private DepositFundsService service;
 
     @BeforeEach
     void setUp() {
         accountRepository = new InMemoryAccountRepository();
-        service = new DepositFundsService(accountRepository);
+        movementRepository =
+                new InMemoryAccountMovementRepository();
+
+        Clock clock = Clock.fixed(
+                CREATED_AT,
+                ZoneOffset.UTC
+        );
+
+        service = new DepositFundsService(
+                accountRepository,
+                movementRepository,
+                clock
+        );
     }
 
     @Test
-    void shouldDepositFundsAndPersistUpdatedAccount() {
+    void shouldDepositFundsAndRecordMovement() {
         Account account = activeAccount(CurrencyCode.PEN);
         accountRepository.save(account);
+
+        Money depositAmount = money(
+                "250.00",
+                CurrencyCode.PEN
+        );
 
         Account result = service.deposit(
                 new DepositFundsCommand(
                         account.id(),
-                        money("250.00", CurrencyCode.PEN)
+                        depositAmount
                 )
         );
 
@@ -51,13 +75,30 @@ class DepositFundsServiceTest {
                 );
 
         assertThat(
-                accountRepository.findById(account.id())
+                movementRepository.findByAccountId(account.id())
         )
-                .get()
-                .extracting(Account::balance)
-                .isEqualTo(
-                        money("250.00", CurrencyCode.PEN)
-                );
+                .singleElement()
+                .satisfies(movement -> {
+                    assertThat(movement.type())
+                            .isEqualTo(MovementType.DEPOSIT);
+
+                    assertThat(movement.amount())
+                            .isEqualTo(depositAmount);
+
+                    assertThat(movement.balanceAfter())
+                            .isEqualTo(
+                                    money(
+                                            "250.00",
+                                            CurrencyCode.PEN
+                                    )
+                            );
+
+                    assertThat(movement.transferId())
+                            .isNull();
+
+                    assertThat(movement.createdAt())
+                            .isEqualTo(CREATED_AT);
+                });
     }
 
     @Test
@@ -138,6 +179,36 @@ class DepositFundsServiceTest {
         assertThatThrownBy(() -> service.deposit(null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("command must not be null");
+    }
+
+    @Test
+    void shouldRecordOneMovementForEachDeposit() {
+        Account account = activeAccount(CurrencyCode.PEN);
+        accountRepository.save(account);
+
+        service.deposit(
+                new DepositFundsCommand(
+                        account.id(),
+                        money("100.00", CurrencyCode.PEN)
+                )
+        );
+
+        service.deposit(
+                new DepositFundsCommand(
+                        account.id(),
+                        money("50.00", CurrencyCode.PEN)
+                )
+        );
+
+        assertThat(
+                movementRepository.findByAccountId(account.id())
+        )
+                .hasSize(2)
+                .extracting(AccountMovement::balanceAfter)
+                .containsExactly(
+                        money("100.00", CurrencyCode.PEN),
+                        money("150.00", CurrencyCode.PEN)
+                        );
     }
 
     private Account activeAccount(CurrencyCode currency) {

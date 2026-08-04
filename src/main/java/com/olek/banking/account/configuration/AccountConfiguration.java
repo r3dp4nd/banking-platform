@@ -5,6 +5,7 @@ import com.olek.banking.account.application.GetAccountService;
 import com.olek.banking.account.application.OpenAccountService;
 import com.olek.banking.account.domain.AccountRepository;
 import com.olek.banking.account.infrastructure.persistence.InMemoryAccountRepository;
+import com.olek.banking.movement.domain.AccountMovementRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -75,8 +76,14 @@ public class AccountConfiguration {
      */
     @Bean
     DepositFundsService depositFundsService(
-            AccountRepository accountRepository
+            AccountRepository accountRepository,
+            AccountMovementRepository movementRepository,
+            Clock clock
     ) {
-        return new DepositFundsService(accountRepository);
+        return new DepositFundsService(
+                accountRepository,
+                movementRepository,
+                clock
+        );
     }
 }
