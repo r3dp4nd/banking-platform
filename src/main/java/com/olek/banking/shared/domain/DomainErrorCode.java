@@ -63,5 +63,10 @@ public enum DomainErrorCode {
     /**
      * The idempotency key is missing or invalid.
      */
-    INVALID_IDEMPOTENCY_KEY
+    INVALID_IDEMPOTENCY_KEY,
+
+    /**
+     * The idempotency key was previously used with different transfer data.
+     */
+    IDEMPOTENCY_KEY_CONFLICT
 }

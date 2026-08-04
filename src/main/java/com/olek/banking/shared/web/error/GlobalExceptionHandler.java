@@ -191,7 +191,8 @@ public class GlobalExceptionHandler {
                  ACCOUNT_NOT_ACTIVE,
                  ACCOUNT_ALREADY_CLOSED,
                  ACCOUNT_HAS_REMAINING_BALANCE,
-                 INVALID_TRANSFER_STATE -> HttpStatus.CONFLICT;
+                 INVALID_TRANSFER_STATE,
+                 IDEMPOTENCY_KEY_CONFLICT -> HttpStatus.CONFLICT;
 
             case INSUFFICIENT_BALANCE,
                  CURRENCY_MISMATCH,

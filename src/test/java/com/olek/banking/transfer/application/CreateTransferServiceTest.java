@@ -1,0 +1,330 @@
+package com.olek.banking.transfer.application;
+
+import com.olek.banking.account.domain.Account;
+import com.olek.banking.account.domain.AccountId;
+import com.olek.banking.account.domain.AccountRepository;
+import com.olek.banking.account.domain.AccountStatus;
+import com.olek.banking.account.domain.exception.AccountNotFoundException;
+import com.olek.banking.account.domain.exception.InsufficientBalanceException;
+import com.olek.banking.account.infrastructure.persistence.InMemoryAccountRepository;
+import com.olek.banking.shared.domain.CurrencyCode;
+import com.olek.banking.shared.domain.Money;
+import com.olek.banking.transfer.domain.Transfer;
+import com.olek.banking.transfer.domain.TransferRepository;
+import com.olek.banking.transfer.domain.TransferStatus;
+import com.olek.banking.transfer.domain.exception.IdempotencyKeyConflictException;
+import com.olek.banking.transfer.infrastructure.persistence.InMemoryTransferRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class CreateTransferServiceTest {
+
+    private static final Instant NOW =
+            Instant.parse("2026-08-04T14:00:00Z");
+
+    private AccountRepository accountRepository;
+    private TransferRepository transferRepository;
+    private CreateTransferService service;
+
+    @BeforeEach
+    void setUp() {
+        accountRepository = new InMemoryAccountRepository();
+        transferRepository = new InMemoryTransferRepository();
+
+        Clock clock = Clock.fixed(
+                NOW,
+                ZoneOffset.UTC
+        );
+
+        service = new CreateTransferService(
+                accountRepository,
+                transferRepository,
+                clock
+        );
+    }
+
+    @Test
+    void shouldCompleteTransferAndUpdateBalances() {
+        Account source = account(
+                "001-1234567890",
+                "500.00"
+        );
+
+        Account destination = account(
+                "001-0987654321",
+                "100.00"
+        );
+
+        accountRepository.save(source);
+        accountRepository.save(destination);
+
+        Transfer transfer = service.create(
+                command(
+                        source.id(),
+                        destination.id(),
+                        "150.00",
+                        "transfer-request-001"
+                )
+        );
+
+        assertThat(transfer.status())
+                .isEqualTo(TransferStatus.COMPLETED);
+
+        assertThat(transfer.createdAt())
+                .isEqualTo(NOW);
+
+        assertThat(transfer.completedAt())
+                .isEqualTo(NOW);
+
+        assertThat(source.balance())
+                .isEqualTo(money("350.00"));
+
+        assertThat(destination.balance())
+                .isEqualTo(money("250.00"));
+
+        assertThat(transferRepository.findById(transfer.id()))
+                .contains(transfer);
+    }
+
+    @Test
+    void shouldReturnExistingTransferForRepeatedRequest() {
+        Account source = account(
+                "001-1234567890",
+                "500.00"
+        );
+
+        Account destination = account(
+                "001-0987654321",
+                "100.00"
+        );
+
+        accountRepository.save(source);
+        accountRepository.save(destination);
+
+        CreateTransferCommand command = command(
+                source.id(),
+                destination.id(),
+                "150.00",
+                "transfer-request-001"
+        );
+
+        Transfer firstResult = service.create(command);
+        Transfer secondResult = service.create(command);
+
+        assertThat(secondResult).isSameAs(firstResult);
+
+        assertThat(source.balance())
+                .isEqualTo(money("350.00"));
+
+        assertThat(destination.balance())
+                .isEqualTo(money("250.00"));
+
+        assertThat(transferRepository.findAll())
+                .containsExactly(firstResult);
+    }
+
+    @Test
+    void shouldRejectReusedKeyWithDifferentAmount() {
+        Account source = account(
+                "001-1234567890",
+                "500.00"
+        );
+
+        Account destination = account(
+                "001-0987654321",
+                "100.00"
+        );
+
+        accountRepository.save(source);
+        accountRepository.save(destination);
+
+        service.create(
+                command(
+                        source.id(),
+                        destination.id(),
+                        "100.00",
+                        "transfer-request-001"
+                )
+        );
+
+        assertThatThrownBy(() ->
+                service.create(
+                        command(
+                                source.id(),
+                                destination.id(),
+                                "200.00",
+                                "transfer-request-001"
+                        )
+                )
+        )
+                .isInstanceOf(
+                        IdempotencyKeyConflictException.class
+                )
+                .hasMessage(
+                        "idempotency key was already used "
+                                + "with different data"
+                );
+    }
+
+    @Test
+    void shouldRejectTransferWithInsufficientBalance() {
+        Account source = account(
+                "001-1234567890",
+                "50.00"
+        );
+
+        Account destination = account(
+                "001-0987654321",
+                "100.00"
+        );
+
+        accountRepository.save(source);
+        accountRepository.save(destination);
+
+        assertThatThrownBy(() ->
+                service.create(
+                        command(
+                                source.id(),
+                                destination.id(),
+                                "150.00",
+                                "transfer-request-001"
+                        )
+                )
+        )
+                .isInstanceOf(
+                        InsufficientBalanceException.class
+                );
+
+        assertThat(source.balance())
+                .isEqualTo(money("50.00"));
+
+        assertThat(destination.balance())
+                .isEqualTo(money("100.00"));
+
+        assertThat(
+                transferRepository.findByIdempotencyKey(
+                        "transfer-request-001"
+                )
+        )
+                .get()
+                .extracting(Transfer::status)
+                .isEqualTo(TransferStatus.REJECTED);
+    }
+
+    @Test
+    void shouldRejectMissingSourceAccount() {
+        AccountId missingSourceId = AccountId.generate();
+
+        Account destination = account(
+                "001-0987654321",
+                "100.00"
+        );
+
+        accountRepository.save(destination);
+
+        assertThatThrownBy(() ->
+                service.create(
+                        command(
+                                missingSourceId,
+                                destination.id(),
+                                "50.00",
+                                "transfer-request-001"
+                        )
+                )
+        )
+                .isInstanceOf(AccountNotFoundException.class)
+                .hasMessage("account not found");
+
+        assertThat(destination.balance())
+                .isEqualTo(money("100.00"));
+
+        assertThat(
+                transferRepository.findByIdempotencyKey(
+                        "transfer-request-001"
+                )
+        )
+                .get()
+                .extracting(Transfer::status)
+                .isEqualTo(TransferStatus.REJECTED);
+    }
+
+    @Test
+    void shouldRejectBlockedDestinationBeforeDebitingSource() {
+        Account source = account(
+                "001-1234567890",
+                "500.00"
+        );
+
+        Account destination = account(
+                "001-0987654321",
+                "100.00"
+        );
+
+        destination.block();
+
+        accountRepository.save(source);
+        accountRepository.save(destination);
+
+        assertThatThrownBy(() ->
+                service.create(
+                        command(
+                                source.id(),
+                                destination.id(),
+                                "150.00",
+                                "transfer-request-001"
+                        )
+                )
+        )
+                .hasMessage("account must be active");
+
+        assertThat(source.balance())
+                .isEqualTo(money("500.00"));
+
+        assertThat(destination.balance())
+                .isEqualTo(money("100.00"));
+    }
+
+    private Account account(
+            String accountNumber,
+            String balance
+    ) {
+        return new Account(
+                AccountId.generate(),
+                accountNumber,
+                CurrencyCode.PEN,
+                money(balance),
+                AccountStatus.ACTIVE,
+                NOW
+        );
+    }
+
+    private CreateTransferCommand command(
+            AccountId sourceAccountId,
+            AccountId destinationAccountId,
+            String amount,
+            String idempotencyKey
+    ) {
+        return new CreateTransferCommand(
+                sourceAccountId,
+                destinationAccountId,
+                money(amount),
+                "Payment for services",
+                idempotencyKey
+        );
+    }
+
+    private Money money(String amount) {
+        return new Money(
+                new BigDecimal(amount),
+                CurrencyCode.PEN
+        );
+    }
+}
