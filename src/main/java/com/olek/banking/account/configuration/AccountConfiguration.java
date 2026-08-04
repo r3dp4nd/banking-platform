@@ -3,6 +3,7 @@ package com.olek.banking.account.configuration;
 import com.olek.banking.account.application.DepositFundsService;
 import com.olek.banking.account.application.GetAccountService;
 import com.olek.banking.account.application.OpenAccountService;
+import com.olek.banking.account.domain.AccountLockRepository;
 import com.olek.banking.account.domain.AccountRepository;
 import com.olek.banking.account.infrastructure.persistence.InMemoryAccountRepository;
 import com.olek.banking.movement.domain.AccountMovementRepository;
@@ -20,14 +21,42 @@ import java.time.Clock;
 public class AccountConfiguration {
 
     /**
-     * Creates the account repository used by the application.
+     * Creates the shared in-memory account repository instance.
      *
      * @return in-memory account repository
      */
     @Bean
     @Profile("memory")
-    AccountRepository accountRepository() {
+    InMemoryAccountRepository inMemoryAccountRepository() {
         return new InMemoryAccountRepository();
+    }
+
+    /**
+     * Exposes the in-memory repository through the account persistence port.
+     *
+     * @param inMemoryAccountRepository in-memory repository
+     * @return account repository port
+     */
+    @Bean
+    @Profile("memory")
+    AccountRepository accountRepository(
+            InMemoryAccountRepository inMemoryAccountRepository
+    ) {
+        return inMemoryAccountRepository;
+    }
+
+    /**
+     * Exposes the in-memory repository through the locking port.
+     *
+     * @param inMemoryAccountRepository in-memory repository
+     * @return account lock repository port
+     */
+    @Bean
+    @Profile("memory")
+    AccountLockRepository accountLockRepository(
+            InMemoryAccountRepository inMemoryAccountRepository
+    ) {
+        return inMemoryAccountRepository;
     }
 
     /**

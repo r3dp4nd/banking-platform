@@ -2,6 +2,7 @@ package com.olek.banking.account.infrastructure.persistence;
 
 import com.olek.banking.account.domain.Account;
 import com.olek.banking.account.domain.AccountId;
+import com.olek.banking.account.domain.AccountLockRepository;
 import com.olek.banking.account.domain.AccountRepository;
 
 import java.util.List;
@@ -16,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>This adapter is intended for learning, local development and isolated
  * tests. Its contents are lost when the application stops.</p>
  */
-public class InMemoryAccountRepository implements AccountRepository {
+public class InMemoryAccountRepository implements AccountRepository, AccountLockRepository {
 
 
     private final Map<AccountId, Account> accounts =
@@ -109,5 +110,18 @@ public class InMemoryAccountRepository implements AccountRepository {
         }
 
         return normalized;
+    }
+
+    @Override
+    public List<Account> findAllByIdsForUpdate(List<AccountId> accountIds) {
+        Objects.requireNonNull(
+                accountIds,
+                "accountIds must not be null"
+        );
+
+        return accountIds.stream()
+                .map(accounts::get)
+                .filter(Objects::nonNull)
+                .toList();
     }
 }

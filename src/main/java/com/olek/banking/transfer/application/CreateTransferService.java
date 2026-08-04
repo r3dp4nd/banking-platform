@@ -1,9 +1,6 @@
 package com.olek.banking.transfer.application;
 
-import com.olek.banking.account.domain.Account;
-import com.olek.banking.account.domain.AccountId;
-import com.olek.banking.account.domain.AccountRepository;
-import com.olek.banking.account.domain.AccountStatus;
+import com.olek.banking.account.domain.*;
 import com.olek.banking.account.domain.exception.AccountNotActiveException;
 import com.olek.banking.account.domain.exception.AccountNotFoundException;
 import com.olek.banking.account.domain.exception.CurrencyMismatchException;
@@ -20,7 +17,10 @@ import com.olek.banking.transfer.domain.exception.IdempotencyKeyConflictExceptio
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 /**
  * Creates and processes internal money transfers between bank accounts.
@@ -28,6 +28,7 @@ import java.util.Objects;
 public final class CreateTransferService {
 
     private final AccountRepository accountRepository;
+    private final AccountLockRepository accountLockRepository;
     private final TransferRepository transferRepository;
     private final AccountMovementRepository movementRepository;
     private final TransactionExecutor transactionExecutor;
@@ -44,6 +45,7 @@ public final class CreateTransferService {
      */
     public CreateTransferService(
             AccountRepository accountRepository,
+            AccountLockRepository accountLockRepository,
             TransferRepository transferRepository,
             AccountMovementRepository movementRepository,
             TransactionExecutor transactionExecutor,
@@ -52,6 +54,11 @@ public final class CreateTransferService {
         this.accountRepository = Objects.requireNonNull(
                 accountRepository,
                 "accountRepository must not be null"
+        );
+
+        this.accountLockRepository = Objects.requireNonNull(
+                accountLockRepository,
+                "accountLockRepository must not be null"
         );
 
         this.transferRepository = Objects.requireNonNull(
@@ -156,13 +163,12 @@ public final class CreateTransferService {
             Transfer transfer,
             CreateTransferCommand command
     ) {
-        Account sourceAccount = findAccount(
-                command.sourceAccountId()
-        );
+        LockedAccounts lockedAccounts =
+                lockTransferAccounts(command);
 
-        Account destinationAccount = findAccount(
-                command.destinationAccountId()
-        );
+        Account sourceAccount = lockedAccounts.source();
+        Account destinationAccount =
+                lockedAccounts.destination();
 
         validateTransfer(
                 sourceAccount,
@@ -208,6 +214,82 @@ public final class CreateTransferService {
         return TransferExecutionResult.completed(
                 completedTransfer
         );
+    }
+
+    private LockedAccounts lockTransferAccounts(
+            CreateTransferCommand command
+    ) {
+        List<AccountId> orderedIds = Stream.of(
+                        command.sourceAccountId(),
+                        command.destinationAccountId()
+                )
+                .sorted(
+                        Comparator.comparing(
+                                AccountId::value
+                        )
+                )
+                .toList();
+
+        List<Account> lockedAccounts =
+                accountLockRepository
+                        .findAllByIdsForUpdate(orderedIds);
+
+        if (lockedAccounts.size() != 2) {
+            throwMissingAccount(
+                    command,
+                    lockedAccounts
+            );
+        }
+
+        Account source = findAccountById(
+                lockedAccounts,
+                command.sourceAccountId()
+        );
+
+        Account destination = findAccountById(
+                lockedAccounts,
+                command.destinationAccountId()
+        );
+
+        return new LockedAccounts(source, destination);
+    }
+
+    private void throwMissingAccount(
+            CreateTransferCommand command,
+            List<Account> existingAccounts
+    ) {
+        boolean sourceExists = existingAccounts.stream()
+                .anyMatch(account ->
+                        account.id().equals(
+                                command.sourceAccountId()
+                        )
+                );
+
+        if (!sourceExists) {
+            throw new AccountNotFoundException(
+                    command.sourceAccountId()
+            );
+        }
+
+        throw new AccountNotFoundException(
+                command.destinationAccountId()
+        );
+    }
+
+    private Account findAccountById(
+            List<Account> accounts,
+            AccountId accountId
+    ) {
+        return accounts.stream()
+                .filter(account ->
+                        account.id().equals(accountId)
+                )
+                .findFirst()
+                .orElseThrow(
+                        () -> new AccountNotFoundException(
+                                accountId
+                        )
+                );
     }
 
     private Transfer handleExistingTransfer(
@@ -321,5 +403,11 @@ public final class CreateTransferService {
         private boolean wasRejected() {
             return rejection != null;
         }
+    }
+
+    private record LockedAccounts(
+            Account source,
+            Account destination
+    ) {
     }
 }

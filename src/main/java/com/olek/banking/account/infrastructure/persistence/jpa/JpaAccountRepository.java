@@ -2,6 +2,7 @@ package com.olek.banking.account.infrastructure.persistence.jpa;
 
 import com.olek.banking.account.domain.Account;
 import com.olek.banking.account.domain.AccountId;
+import com.olek.banking.account.domain.AccountLockRepository;
 import com.olek.banking.account.domain.AccountRepository;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
@@ -9,13 +10,14 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Persists account domain entities through Spring Data JPA.
  */
 @Repository
 @Profile("!memory")
-public class JpaAccountRepository implements AccountRepository {
+public class JpaAccountRepository implements AccountRepository, AccountLockRepository {
 
     private final SpringDataAccountJpaRepository jpaRepository;
 
@@ -133,5 +135,23 @@ public class JpaAccountRepository implements AccountRepository {
         }
 
         return normalized;
+    }
+
+    @Override
+    public List<Account> findAllByIdsForUpdate(List<AccountId> accountIds) {
+        Objects.requireNonNull(
+                accountIds,
+                "accountIds must not be null"
+        );
+
+        List<UUID> identifiers = accountIds.stream()
+                .map(AccountId::value)
+                .toList();
+
+        return jpaRepository
+                .findAllByIdForUpdate(identifiers)
+                .stream()
+                .map(AccountPersistenceMapper::toDomain)
+                .toList();
     }
 }

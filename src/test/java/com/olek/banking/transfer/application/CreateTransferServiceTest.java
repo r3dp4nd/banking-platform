@@ -1,9 +1,6 @@
 package com.olek.banking.transfer.application;
 
-import com.olek.banking.account.domain.Account;
-import com.olek.banking.account.domain.AccountId;
-import com.olek.banking.account.domain.AccountRepository;
-import com.olek.banking.account.domain.AccountStatus;
+import com.olek.banking.account.domain.*;
 import com.olek.banking.account.domain.exception.AccountNotFoundException;
 import com.olek.banking.account.domain.exception.InsufficientBalanceException;
 import com.olek.banking.account.infrastructure.persistence.InMemoryAccountRepository;
@@ -36,13 +33,18 @@ class CreateTransferServiceTest {
             Instant.parse("2026-08-04T14:00:00Z");
 
     private AccountRepository accountRepository;
+    private AccountLockRepository accountLockRepository;
     private TransferRepository transferRepository;
     private AccountMovementRepository movementRepository;
     private CreateTransferService service;
 
     @BeforeEach
     void setUp() {
-        accountRepository = new InMemoryAccountRepository();
+        InMemoryAccountRepository inMemoryAccountRepository =
+                new InMemoryAccountRepository();
+
+        accountRepository = inMemoryAccountRepository;
+        accountLockRepository = inMemoryAccountRepository;
         transferRepository = new InMemoryTransferRepository();
         movementRepository =
                 new InMemoryAccountMovementRepository();
@@ -54,6 +56,7 @@ class CreateTransferServiceTest {
 
         service = new CreateTransferService(
                 accountRepository,
+                accountLockRepository,
                 transferRepository,
                 movementRepository,
                 new DirectTransactionExecutor(),
