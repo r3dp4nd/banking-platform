@@ -6,6 +6,7 @@ import com.olek.banking.movement.domain.AccountMovementRepository;
 import com.olek.banking.movement.infrastructure.persistence.InMemoryAccountMovementRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 /**
  * Configures the account movement module dependencies.
@@ -19,6 +20,7 @@ public class MovementConfiguration {
      * @return in-memory account movement repository
      */
     @Bean
+    @Profile("memory")
     AccountMovementRepository accountMovementRepository() {
         return new InMemoryAccountMovementRepository();
     }
@@ -26,7 +28,7 @@ public class MovementConfiguration {
     /**
      * Creates the account movement query use case.
      *
-     * @param accountRepository account persistence port
+     * @param accountRepository  account persistence port
      * @param movementRepository account movement persistence port
      * @return configured movement query service
      */
