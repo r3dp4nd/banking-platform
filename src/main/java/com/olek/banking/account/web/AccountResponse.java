@@ -15,7 +15,7 @@ import java.time.Instant;
  * @param status        initial account status
  * @param createdAt     account creation timestamp
  */
-public record OpenAccountResponse(
+public record AccountResponse(
         String accountId,
         String accountNumber,
         CurrencyCode currency,

@@ -2,6 +2,8 @@ package com.olek.banking.account.web;
 
 import com.olek.banking.account.application.OpenAccountCommand;
 import com.olek.banking.account.domain.Account;
+import com.olek.banking.account.domain.AccountId;
+import com.olek.banking.shared.web.error.InvalidRequestParameterException;
 
 /**
  * Maps account web models to application and domain models.
@@ -32,8 +34,8 @@ final class AccountWebMapper {
      * @param account account to map
      * @return account opening response
      */
-    static OpenAccountResponse toResponse(Account account) {
-        return new OpenAccountResponse(
+    static AccountResponse toResponse(Account account) {
+        return new AccountResponse(
                 account.id().toString(),
                 account.accountNumber(),
                 account.currency(),
@@ -41,5 +43,23 @@ final class AccountWebMapper {
                 account.status().name(),
                 account.createdAt()
         );
+    }
+
+    /**
+     * Maps a textual HTTP path value to an account identifier.
+     *
+     * @param value textual account identifier
+     * @return parsed account identifier
+     * @throws InvalidRequestParameterException if the value is not a UUID
+     */
+    static AccountId toAccountId(String value) {
+        try {
+            return AccountId.from(value);
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidRequestParameterException(
+                    "accountId",
+                    value
+            );
+        }
     }
 }

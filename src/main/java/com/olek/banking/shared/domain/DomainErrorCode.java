@@ -38,5 +38,10 @@ public enum DomainErrorCode {
     /**
      * The requested account number is already registered.
      */
-    ACCOUNT_NUMBER_ALREADY_EXISTS
+    ACCOUNT_NUMBER_ALREADY_EXISTS,
+    
+    /**
+     * The requested account does not exist.
+     */
+    ACCOUNT_NOT_FOUND
 }

@@ -16,6 +16,11 @@ public enum ApiErrorCode {
     MALFORMED_REQUEST,
 
     /**
+     * A path or query parameter has an invalid format.
+     */
+    INVALID_PARAMETER,
+
+    /**
      * The server encountered an unexpected error.
      */
     INTERNAL_SERVER_ERROR

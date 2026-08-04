@@ -1,5 +1,6 @@
 package com.olek.banking.account.configuration;
 
+import com.olek.banking.account.application.GetAccountService;
 import com.olek.banking.account.application.OpenAccountService;
 import com.olek.banking.account.domain.AccountRepository;
 import com.olek.banking.account.infrastructure.persistence.InMemoryAccountRepository;
@@ -50,5 +51,18 @@ public class AccountConfiguration {
                 accountRepository,
                 clock
         );
+    }
+
+    /**
+     * Creates the account query use case.
+     *
+     * @param accountRepository account persistence port
+     * @return configured account query service
+     */
+    @Bean
+    GetAccountService getAccountService(
+            AccountRepository accountRepository
+    ) {
+        return new GetAccountService(accountRepository);
     }
 }

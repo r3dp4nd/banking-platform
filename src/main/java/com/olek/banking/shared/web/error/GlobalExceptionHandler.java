@@ -155,8 +155,38 @@ public class GlobalExceptionHandler {
                 .body(response);
     }
 
+    /**
+     * Handles invalid path or query parameter representations.
+     *
+     * @param exception invalid parameter exception
+     * @param request   current HTTP request
+     * @return bad-request error response
+     */
+    @ExceptionHandler(InvalidRequestParameterException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidParameter(
+            InvalidRequestParameterException exception,
+            HttpServletRequest request
+    ) {
+        ApiErrorResponse response = new ApiErrorResponse(
+                ApiErrorCode.INVALID_PARAMETER.name(),
+                exception.getMessage(),
+                Map.of(
+                        "parameter", exception.parameter(),
+                        "value", exception.value()
+                ),
+                request.getRequestURI(),
+                Instant.now(clock)
+        );
+
+        return ResponseEntity
+                .badRequest()
+                .body(response);
+    }
+
     private HttpStatusCode statusFor(DomainErrorCode code) {
         return switch (code) {
+            case ACCOUNT_NOT_FOUND -> HttpStatus.NOT_FOUND;
+
             case ACCOUNT_NUMBER_ALREADY_EXISTS,
                  ACCOUNT_NOT_ACTIVE,
                  ACCOUNT_ALREADY_CLOSED,

@@ -1,9 +1,12 @@
 package com.olek.banking.account.web;
 
+import com.olek.banking.account.application.GetAccountService;
 import com.olek.banking.account.application.OpenAccountCommand;
 import com.olek.banking.account.application.OpenAccountService;
 import com.olek.banking.account.domain.Account;
 import com.olek.banking.account.domain.AccountId;
+import com.olek.banking.account.domain.AccountStatus;
+import com.olek.banking.account.domain.exception.AccountNotFoundException;
 import com.olek.banking.account.domain.exception.AccountNumberAlreadyExistsException;
 import com.olek.banking.shared.domain.CurrencyCode;
 import com.olek.banking.shared.domain.Money;
@@ -24,6 +27,7 @@ import java.time.ZoneOffset;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -46,6 +50,9 @@ class AccountControllerTest {
 
     @MockitoBean
     private OpenAccountService openAccountService;
+
+    @MockitoBean
+    private GetAccountService getAccountService;
 
     @Test
     void shouldOpenAccount() throws Exception {
@@ -213,6 +220,121 @@ class AccountControllerTest {
                                 .value(
                                         "request body is missing or malformed"
                                 )
+                );
+    }
+
+    @Test
+    void shouldReturnAccountById() throws Exception {
+        AccountId accountId = AccountId.from(
+                "b8f62817-7a18-4c39-b750-8d608a245f52"
+        );
+
+        Account account = new Account(
+                accountId,
+                "001-1234567890",
+                CurrencyCode.PEN,
+                Money.zero(CurrencyCode.PEN),
+                AccountStatus.ACTIVE,
+                NOW
+        );
+
+        when(getAccountService.getById(accountId))
+                .thenReturn(account);
+
+        mockMvc.perform(
+                        get(
+                                "/api/v1/accounts/{accountId}",
+                                accountId.toString()
+                        )
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.accountId")
+                                .value(accountId.toString())
+                )
+                .andExpect(
+                        jsonPath("$.accountNumber")
+                                .value("001-1234567890")
+                )
+                .andExpect(
+                        jsonPath("$.currency")
+                                .value("PEN")
+                )
+                .andExpect(
+                        jsonPath("$.balance")
+                                .value(0.00)
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("ACTIVE")
+                );
+    }
+
+    @Test
+    void shouldReturnNotFoundForMissingAccount()
+            throws Exception {
+
+        AccountId accountId = AccountId.from(
+                "b8f62817-7a18-4c39-b750-8d608a245f52"
+        );
+
+        when(getAccountService.getById(accountId))
+                .thenThrow(new AccountNotFoundException(accountId));
+
+        mockMvc.perform(
+                        get(
+                                "/api/v1/accounts/{accountId}",
+                                accountId.toString()
+                        )
+                )
+                .andExpect(status().isNotFound())
+                .andExpect(
+                        jsonPath("$.code")
+                                .value("ACCOUNT_NOT_FOUND")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value("account not found")
+                )
+                .andExpect(
+                        jsonPath("$.context.accountId")
+                                .value(accountId.toString())
+                )
+                .andExpect(
+                        jsonPath("$.path")
+                                .value(
+                                        "/api/v1/accounts/"
+                                                + accountId
+                                )
+                );
+    }
+
+    @Test
+    void shouldRejectInvalidAccountId() throws Exception {
+        mockMvc.perform(
+                        get(
+                                "/api/v1/accounts/{accountId}",
+                                "not-a-uuid"
+                        )
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.code")
+                                .value("INVALID_PARAMETER")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(
+                                        "request parameter has an invalid format"
+                                )
+                )
+                .andExpect(
+                        jsonPath("$.context.parameter")
+                                .value("accountId")
+                )
+                .andExpect(
+                        jsonPath("$.context.value")
+                                .value("not-a-uuid")
                 );
     }
 
