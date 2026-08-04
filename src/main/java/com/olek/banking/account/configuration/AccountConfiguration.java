@@ -8,6 +8,7 @@ import com.olek.banking.account.infrastructure.persistence.InMemoryAccountReposi
 import com.olek.banking.movement.domain.AccountMovementRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 import java.time.Clock;
 
@@ -23,6 +24,7 @@ public class AccountConfiguration {
      * @return in-memory account repository
      */
     @Bean
+    @Profile("memory")
     AccountRepository accountRepository() {
         return new InMemoryAccountRepository();
     }
