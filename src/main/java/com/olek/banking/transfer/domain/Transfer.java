@@ -2,6 +2,10 @@ package com.olek.banking.transfer.domain;
 
 import com.olek.banking.account.domain.AccountId;
 import com.olek.banking.shared.domain.Money;
+import com.olek.banking.transfer.domain.exception.InvalidIdempotencyKeyException;
+import com.olek.banking.transfer.domain.exception.InvalidTransferAmountException;
+import com.olek.banking.transfer.domain.exception.InvalidTransferStateException;
+import com.olek.banking.transfer.domain.exception.TransferAccountsMustDifferException;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -280,9 +284,7 @@ public final class Transfer {
         Objects.requireNonNull(value, "amount must not be null");
 
         if (value.isZero()) {
-            throw new IllegalArgumentException(
-                    "transfer amount must be greater than zero"
-            );
+            throw new InvalidTransferAmountException(value);
         }
 
         return value;
@@ -305,9 +307,7 @@ public final class Transfer {
         String normalized = value.trim();
 
         if (normalized.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "idempotencyKey must not be blank"
-            );
+            throw new InvalidIdempotencyKeyException();
         }
 
         return normalized;
@@ -329,16 +329,17 @@ public final class Transfer {
 
     private void requireDifferentAccounts() {
         if (sourceAccountId.equals(destinationAccountId)) {
-            throw new IllegalArgumentException(
-                    "source and destination accounts must be different"
+            throw new TransferAccountsMustDifferException(
+                    sourceAccountId
             );
         }
     }
 
     private void requirePending() {
         if (status != TransferStatus.PENDING) {
-            throw new IllegalStateException(
-                    "only pending transfers can change status"
+            throw new InvalidTransferStateException(
+                    id,
+                    status
             );
         }
     }

@@ -190,11 +190,15 @@ public class GlobalExceptionHandler {
             case ACCOUNT_NUMBER_ALREADY_EXISTS,
                  ACCOUNT_NOT_ACTIVE,
                  ACCOUNT_ALREADY_CLOSED,
-                 ACCOUNT_HAS_REMAINING_BALANCE -> HttpStatus.CONFLICT;
+                 ACCOUNT_HAS_REMAINING_BALANCE,
+                 INVALID_TRANSFER_STATE -> HttpStatus.CONFLICT;
 
             case INSUFFICIENT_BALANCE,
                  CURRENCY_MISMATCH,
-                 INVALID_AMOUNT -> UNPROCESSABLE_CONTENT;
+                 INVALID_AMOUNT,
+                 TRANSFER_ACCOUNTS_MUST_DIFFER,
+                 INVALID_TRANSFER_AMOUNT,
+                 INVALID_IDEMPOTENCY_KEY -> UNPROCESSABLE_CONTENT;
         };
     }
 }

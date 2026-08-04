@@ -3,6 +3,10 @@ package com.olek.banking.transfer.domain;
 import com.olek.banking.account.domain.AccountId;
 import com.olek.banking.shared.domain.CurrencyCode;
 import com.olek.banking.shared.domain.Money;
+import com.olek.banking.transfer.domain.exception.InvalidIdempotencyKeyException;
+import com.olek.banking.transfer.domain.exception.InvalidTransferAmountException;
+import com.olek.banking.transfer.domain.exception.InvalidTransferStateException;
+import com.olek.banking.transfer.domain.exception.TransferAccountsMustDifferException;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -136,7 +140,9 @@ class TransferTest {
                         CREATED_AT
                 )
         )
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(
+                        TransferAccountsMustDifferException.class
+                )
                 .hasMessage(
                         "source and destination accounts must be different"
                 );
@@ -155,7 +161,9 @@ class TransferTest {
                         CREATED_AT
                 )
         )
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(
+                        InvalidTransferAmountException.class
+                )
                 .hasMessage(
                         "transfer amount must be greater than zero"
                 );
@@ -174,9 +182,11 @@ class TransferTest {
                         CREATED_AT
                 )
         )
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(
+                        InvalidIdempotencyKeyException.class
+                )
                 .hasMessage(
-                        "idempotencyKey must not be blank"
+                        "idempotency key must not be blank"
                 );
     }
 
@@ -191,7 +201,9 @@ class TransferTest {
                         COMPLETED_AT
                 )
         )
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(
+                        InvalidTransferStateException.class
+                )
                 .hasMessage(
                         "only pending transfers can change status"
                 );

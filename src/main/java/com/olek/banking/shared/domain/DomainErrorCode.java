@@ -39,9 +39,29 @@ public enum DomainErrorCode {
      * The requested account number is already registered.
      */
     ACCOUNT_NUMBER_ALREADY_EXISTS,
-    
+
     /**
      * The requested account does not exist.
      */
-    ACCOUNT_NOT_FOUND
+    ACCOUNT_NOT_FOUND,
+
+    /**
+     * The source and destination accounts must be different.
+     */
+    TRANSFER_ACCOUNTS_MUST_DIFFER,
+
+    /**
+     * The transfer amount must be greater than zero.
+     */
+    INVALID_TRANSFER_AMOUNT,
+
+    /**
+     * The transfer cannot perform the requested state transition.
+     */
+    INVALID_TRANSFER_STATE,
+
+    /**
+     * The idempotency key is missing or invalid.
+     */
+    INVALID_IDEMPOTENCY_KEY
 }
