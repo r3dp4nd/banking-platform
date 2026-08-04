@@ -214,7 +214,8 @@ public class GlobalExceptionHandler {
 
     private HttpStatusCode statusFor(DomainErrorCode code) {
         return switch (code) {
-            case ACCOUNT_NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case ACCOUNT_NOT_FOUND,
+                 TRANSFER_NOT_FOUND -> HttpStatus.NOT_FOUND;
 
             case ACCOUNT_NUMBER_ALREADY_EXISTS,
                  ACCOUNT_NOT_ACTIVE,

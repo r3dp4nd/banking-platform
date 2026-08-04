@@ -5,6 +5,7 @@ import com.olek.banking.shared.domain.Money;
 import com.olek.banking.shared.web.error.InvalidRequestParameterException;
 import com.olek.banking.transfer.application.CreateTransferCommand;
 import com.olek.banking.transfer.domain.Transfer;
+import com.olek.banking.transfer.domain.TransferId;
 
 /**
  * Maps transfer web models to application and domain models.
@@ -75,6 +76,24 @@ final class TransferWebMapper {
         } catch (IllegalArgumentException exception) {
             throw new InvalidRequestParameterException(
                     parameter,
+                    value
+            );
+        }
+    }
+
+    /**
+     * Maps a textual HTTP path value to a transfer identifier.
+     *
+     * @param value textual transfer identifier
+     * @return parsed transfer identifier
+     * @throws InvalidRequestParameterException if the value is not a UUID
+     */
+    static TransferId toTransferId(String value) {
+        try {
+            return TransferId.from(value);
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidRequestParameterException(
+                    "transferId",
                     value
             );
         }

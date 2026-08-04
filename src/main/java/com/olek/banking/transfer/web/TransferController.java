@@ -1,6 +1,7 @@
 package com.olek.banking.transfer.web;
 
 import com.olek.banking.transfer.application.CreateTransferService;
+import com.olek.banking.transfer.application.GetTransferService;
 import com.olek.banking.transfer.domain.Transfer;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -19,6 +20,7 @@ public class TransferController {
             "Idempotency-Key";
 
     private final CreateTransferService createTransferService;
+    private final GetTransferService getTransferService;
 
     /**
      * Creates the transfer controller.
@@ -26,11 +28,17 @@ public class TransferController {
      * @param createTransferService transfer creation use case
      */
     public TransferController(
-            CreateTransferService createTransferService
+            CreateTransferService createTransferService,
+            GetTransferService getTransferService
     ) {
         this.createTransferService = Objects.requireNonNull(
                 createTransferService,
                 "createTransferService must not be null"
+        );
+
+        this.getTransferService = Objects.requireNonNull(
+                getTransferService,
+                "getTransferService must not be null"
         );
     }
 
@@ -53,6 +61,23 @@ public class TransferController {
                         request,
                         idempotencyKey
                 )
+        );
+
+        return TransferWebMapper.toResponse(transfer);
+    }
+
+    /**
+     * Retrieves a money transfer by its identifier.
+     *
+     * @param transferId textual transfer identifier
+     * @return existing transfer
+     */
+    @GetMapping("/{transferId}")
+    public TransferResponse getTransfer(
+            @PathVariable String transferId
+    ) {
+        Transfer transfer = getTransferService.getById(
+                TransferWebMapper.toTransferId(transferId)
         );
 
         return TransferWebMapper.toResponse(transfer);

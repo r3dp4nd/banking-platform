@@ -6,9 +6,11 @@ import com.olek.banking.shared.domain.Money;
 import com.olek.banking.shared.web.error.GlobalExceptionHandler;
 import com.olek.banking.transfer.application.CreateTransferCommand;
 import com.olek.banking.transfer.application.CreateTransferService;
+import com.olek.banking.transfer.application.GetTransferService;
 import com.olek.banking.transfer.domain.Transfer;
 import com.olek.banking.transfer.domain.TransferId;
 import com.olek.banking.transfer.domain.exception.IdempotencyKeyConflictException;
+import com.olek.banking.transfer.domain.exception.TransferNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -26,6 +28,7 @@ import java.time.ZoneOffset;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -54,6 +57,9 @@ class TransferControllerTest {
 
     @MockitoBean
     private CreateTransferService createTransferService;
+
+    @MockitoBean
+    private GetTransferService getTransferService;
 
     @Test
     void shouldCreateTransfer() throws Exception {
@@ -286,6 +292,126 @@ class TransferControllerTest {
                 .andExpect(
                         jsonPath("$.context.existingTransferId")
                                 .value(transfer.id().toString())
+                );
+    }
+
+    @Test
+    void shouldReturnTransferById() throws Exception {
+        Transfer transfer = completedTransfer();
+
+        when(getTransferService.getById(transfer.id()))
+                .thenReturn(transfer);
+
+        mockMvc.perform(
+                        get(
+                                "/api/v1/transfers/{transferId}",
+                                transfer.id().toString()
+                        )
+                )
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.transferId")
+                                .value(transfer.id().toString())
+                )
+                .andExpect(
+                        jsonPath("$.sourceAccountId")
+                                .value(SOURCE_ACCOUNT_ID)
+                )
+                .andExpect(
+                        jsonPath("$.destinationAccountId")
+                                .value(DESTINATION_ACCOUNT_ID)
+                )
+                .andExpect(
+                        jsonPath("$.amount")
+                                .value(150.00)
+                )
+                .andExpect(
+                        jsonPath("$.currency")
+                                .value("PEN")
+                )
+                .andExpect(
+                        jsonPath("$.status")
+                                .value("COMPLETED")
+                )
+                .andExpect(
+                        jsonPath("$.failureReason")
+                                .doesNotExist()
+                );
+    }
+
+    @Test
+    void shouldReturnNotFoundForMissingTransfer()
+            throws Exception {
+
+        TransferId transferId = TransferId.from(
+                "33333333-3333-3333-3333-333333333333"
+        );
+
+        when(getTransferService.getById(transferId))
+                .thenThrow(
+                        new TransferNotFoundException(transferId)
+                );
+
+        mockMvc.perform(
+                        get(
+                                "/api/v1/transfers/{transferId}",
+                                transferId.toString()
+                        )
+                )
+                .andExpect(status().isNotFound())
+                .andExpect(
+                        jsonPath("$.code")
+                                .value("TRANSFER_NOT_FOUND")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value("transfer not found")
+                )
+                .andExpect(
+                        jsonPath("$.context.transferId")
+                                .value(transferId.toString())
+                )
+                .andExpect(
+                        jsonPath("$.path")
+                                .value(
+                                        "/api/v1/transfers/"
+                                                + transferId
+                                )
+                )
+                .andExpect(
+                        jsonPath("$.timestamp")
+                                .value(NOW.toString())
+                );
+    }
+
+    @Test
+    void shouldRejectInvalidTransferId()
+            throws Exception {
+
+        mockMvc.perform(
+                        get(
+                                "/api/v1/transfers/{transferId}",
+                                "not-a-uuid"
+                        )
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.code")
+                                .value("INVALID_PARAMETER")
+                )
+                .andExpect(
+                        jsonPath("$.message")
+                                .value(
+                                        "request parameter has an invalid format"
+                                )
+                )
+                .andExpect(
+                        jsonPath("$.context.parameter")
+                                .value("transferId")
+                )
+                .andExpect(
+                        jsonPath("$.context.value")
+                                .value("not-a-uuid")
                 );
     }
 

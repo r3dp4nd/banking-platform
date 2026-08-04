@@ -2,6 +2,7 @@ package com.olek.banking.transfer.configuration;
 
 import com.olek.banking.account.domain.AccountRepository;
 import com.olek.banking.transfer.application.CreateTransferService;
+import com.olek.banking.transfer.application.GetTransferService;
 import com.olek.banking.transfer.domain.TransferRepository;
 import com.olek.banking.transfer.infrastructure.persistence.InMemoryTransferRepository;
 import org.springframework.context.annotation.Bean;
@@ -44,5 +45,18 @@ public class TransferConfiguration {
                 transferRepository,
                 clock
         );
+    }
+
+    /**
+     * Creates the transfer query use case.
+     *
+     * @param transferRepository transfer persistence port
+     * @return configured transfer query service
+     */
+    @Bean
+    GetTransferService getTransferService(
+            TransferRepository transferRepository
+    ) {
+        return new GetTransferService(transferRepository);
     }
 }

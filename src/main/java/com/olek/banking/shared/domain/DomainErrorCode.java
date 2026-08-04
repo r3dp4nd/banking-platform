@@ -68,5 +68,10 @@ public enum DomainErrorCode {
     /**
      * The idempotency key was previously used with different transfer data.
      */
-    IDEMPOTENCY_KEY_CONFLICT
+    IDEMPOTENCY_KEY_CONFLICT,
+
+    /**
+     * The requested transfer does not exist.
+     */
+    TRANSFER_NOT_FOUND
 }
