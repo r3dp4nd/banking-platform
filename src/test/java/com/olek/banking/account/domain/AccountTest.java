@@ -1,6 +1,8 @@
 package com.olek.banking.account.domain;
 
+import com.olek.banking.account.domain.exception.*;
 import com.olek.banking.shared.domain.CurrencyCode;
+import com.olek.banking.shared.domain.DomainErrorCode;
 import com.olek.banking.shared.domain.Money;
 import org.junit.jupiter.api.Test;
 
@@ -69,10 +71,23 @@ class AccountTest {
         assertThatThrownBy(() ->
                 account.debit(money("80.00"))
         )
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage(
-                        "resulting amount must not be negative"
-                );
+                .isInstanceOf(InsufficientBalanceException.class)
+                .hasMessage("account has insufficient balance")
+                .satisfies(exception -> {
+                    InsufficientBalanceException domainException =
+                            (InsufficientBalanceException) exception;
+
+                    assertThat(domainException.code())
+                            .isEqualTo(
+                                    DomainErrorCode.INSUFFICIENT_BALANCE
+                            );
+
+                    assertThat(domainException.context())
+                            .containsEntry(
+                                    "currency",
+                                    CurrencyCode.PEN.name()
+                            );
+                });
     }
 
     @Test
@@ -83,7 +98,7 @@ class AccountTest {
         assertThatThrownBy(() ->
                 account.debit(money("10.00"))
         )
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(AccountNotActiveException.class)
                 .hasMessage("account must be active");
     }
 
@@ -103,7 +118,9 @@ class AccountTest {
         Account account = activeAccount("100.00");
 
         assertThatThrownBy(account::close)
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(
+                        AccountHasRemainingBalanceException.class
+                )
                 .hasMessage(
                         "account with remaining balance cannot be closed"
                 );
@@ -125,9 +142,9 @@ class AccountTest {
         account.close();
 
         assertThatThrownBy(account::activate)
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(AccountAlreadyClosedException.class)
                 .hasMessage(
-                        "closed account cannot be activated"
+                        "closed account cannot change status"
                 );
     }
 
@@ -146,10 +163,8 @@ class AccountTest {
                         CREATED_AT
                 )
         )
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage(
-                        "account and balance currencies must match"
-                );
+                .isInstanceOf(CurrencyMismatchException.class)
+                .hasMessage("currencies must match");
     }
 
     @Test
@@ -159,7 +174,7 @@ class AccountTest {
         assertThatThrownBy(() ->
                 account.deposit(Money.zero(CurrencyCode.PEN))
         )
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(InvalidAmountException.class)
                 .hasMessage(
                         "amount must be greater than zero"
                 );

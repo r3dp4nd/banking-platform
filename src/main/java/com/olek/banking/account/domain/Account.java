@@ -1,5 +1,6 @@
 package com.olek.banking.account.domain;
 
+import com.olek.banking.account.domain.exception.*;
 import com.olek.banking.shared.domain.CurrencyCode;
 import com.olek.banking.shared.domain.Money;
 
@@ -109,14 +110,22 @@ public class Account {
      * Debits funds from the account.
      *
      * @param amount amount to debit
-     * @throws IllegalStateException    if the account is not active
-     * @throws IllegalArgumentException if the currency does not match,
-     *                                  the amount is zero,
-     *                                  or the balance is insufficient
+     * @throws AccountNotActiveException    if the account is not active
+     * @throws CurrencyMismatchException    if the currency does not match
+     * @throws InvalidAmountException       if the amount is zero
+     * @throws InsufficientBalanceException if the account has insufficient funds
      */
     public void debit(Money amount) {
         requireActive();
         requirePositive(amount);
+
+        if (balance.isLessThan(amount)) {
+            throw new InsufficientBalanceException(
+                    id,
+                    balance,
+                    amount
+            );
+        }
 
         balance = balance.subtract(amount);
     }
@@ -139,42 +148,33 @@ public class Account {
     /**
      * Blocks the account.
      *
-     * @throws IllegalStateException if the account is already closed
+     * @throws AccountAlreadyClosedException if the account is closed
      */
     public void block() {
-        if (status == AccountStatus.CLOSED) {
-            throw new IllegalStateException(
-                    "closed account cannot be blocked"
-            );
-        }
-
+        requireNotClosed();
         status = AccountStatus.BLOCKED;
     }
 
     /**
      * Reactivates a blocked account.
      *
-     * @throws IllegalStateException if the account is closed
+     * @throws AccountAlreadyClosedException if the account is closed
      */
     public void activate() {
-        if (status == AccountStatus.CLOSED) {
-            throw new IllegalStateException(
-                    "closed account cannot be activated"
-            );
-        }
-
+        requireNotClosed();
         status = AccountStatus.ACTIVE;
     }
 
     /**
      * Permanently closes the account.
      *
-     * @throws IllegalStateException if the account has a remaining balance
+     * @throws AccountHasRemainingBalanceException if the account has funds
      */
     public void close() {
         if (!balance.isZero()) {
-            throw new IllegalStateException(
-                    "account with remaining balance cannot be closed"
+            throw new AccountHasRemainingBalanceException(
+                    id,
+                    balance
             );
         }
 
@@ -251,8 +251,9 @@ public class Account {
 
     private Money requireMatchingCurrency(Money amount) {
         if (amount.currency() != currency) {
-            throw new IllegalArgumentException(
-                    "account and balance currencies must match"
+            throw new CurrencyMismatchException(
+                    currency,
+                    amount.currency()
             );
         }
 
@@ -264,17 +265,19 @@ public class Account {
         requireMatchingCurrency(amount);
 
         if (amount.isZero()) {
-            throw new IllegalArgumentException(
-                    "amount must be greater than zero"
-            );
+            throw new InvalidAmountException(amount);
         }
     }
 
     private void requireActive() {
         if (status != AccountStatus.ACTIVE) {
-            throw new IllegalStateException(
-                    "account must be active"
-            );
+            throw new AccountNotActiveException(id, status);
+        }
+    }
+
+    private void requireNotClosed() {
+        if (status == AccountStatus.CLOSED) {
+            throw new AccountAlreadyClosedException(id);
         }
     }
 }
