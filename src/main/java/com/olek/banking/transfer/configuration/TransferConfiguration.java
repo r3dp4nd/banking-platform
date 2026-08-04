@@ -8,6 +8,7 @@ import com.olek.banking.transfer.domain.TransferRepository;
 import com.olek.banking.transfer.infrastructure.persistence.InMemoryTransferRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 import java.time.Clock;
 
@@ -23,6 +24,7 @@ public class TransferConfiguration {
      * @return in-memory transfer repository
      */
     @Bean
+    @Profile("memory")
     TransferRepository transferRepository() {
         return new InMemoryTransferRepository();
     }
